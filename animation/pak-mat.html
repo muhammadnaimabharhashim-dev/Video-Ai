@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="ms">
+<head>
+<meta charset="utf-8">
+<title>Pak Mat dan Ayam</title>
+<style>
+  html,body{margin:0;background:#111;}
+  canvas{display:block;width:100vw;max-width:1280px;margin:0 auto;aspect-ratio:16/9;}
+</style>
+</head>
+<body>
+<canvas id="c" width="1280" height="720"></canvas>
+<script>
+const W = 960, H = 540, GY = 450, WY = 450, DUR = 39, PI = Math.PI;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const ease = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
+const seg = (t, a, b) => clamp((t - a) / (b - a), 0, 1);
+const arc = u => Math.sin(clamp(u, 0, 1) * PI);
+const mod = (a, n) => ((a % n) + n) % n;
+// Spoken lines (start time, duration, text). Durations match tools/audio_pakmat.py output.
+const LINES = window.LINES || [
+  [1.0, 7.35, 'Assalamualaikum semua! Saya Pak Mat. Hari ini, saya nak tangkap ayam saya yang nakal!'],
+  [9.0, 3.84, 'Eh! Itu dia! Ayam! Jangan lari!'],
+  [14.0, 3.34, 'Aduh... gelapnya! Siapa tutup lampu?'],
+  [19.4, 5.01, 'Haa, apa pulak yang jatuh ni? Durian? Patutlah pening.'],
+  [25.0, 7.05, 'Hmm... ayam ni lapar agaknya. Nah, makan dulu. Lepas ni jangan lari lagi ya.'],
+  [32.6, 3.74, 'Wah! Telur emas! Pak Mat dah kaya raya!'],
+];
+const mouth = t => {
+  if (window.MOUTH) return window.MOUTH[Math.round(t * 30)] || 0;
+  for (const [a, d] of LINES) if (t >= a && t < a + d) return 0.25 + 0.75 * Math.abs(Math.sin(t * 17));
+  return 0;
+};
+
+// ---------- helpers ----------
+function ell(x, y, rx, ry, fill, rot = 0) { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, rot, 0, PI * 2); ctx.fillStyle = fill; ctx.fill(); }
+function circ(x, y, r, fill) { ell(x, y, r, r, fill); }
+function line(x1, y1, x2, y2, col, w) { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+function poly(pts, fill) { ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); }
+function rrect(x, y, w, h, r, fill, stroke, lw = 3) {
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, r);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); }
+}
+function text(s, x, y, size, fill = '#fff', stroke = '#222', lw = 6, align = 'center') {
+  ctx.font = `900 ${size}px "DejaVu Sans","Arial Black",Arial,sans-serif`;
+  ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.strokeText(s, x, y); }
+  ctx.fillStyle = fill; ctx.fillText(s, x, y);
+}
+function sweat(x, y, s = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.beginPath();
+  ctx.moveTo(0, -12); ctx.quadraticCurveTo(9, 2, 0, 8); ctx.quadraticCurveTo(-9, 2, 0, -12);
+  ctx.fillStyle = '#7fd4ff'; ctx.fill(); ctx.strokeStyle = '#2b88c8'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+}
+function heart(x, y, s, fill) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.beginPath();
+  ctx.moveTo(0, 6); ctx.bezierCurveTo(-14, -4, -8, -16, 0, -8); ctx.bezierCurveTo(8, -16, 14, -4, 0, 6);
+  ctx.fillStyle = fill; ctx.fill(); ctx.restore();
+}
+function pop(s, t, t0, d, x, y, col, size, rot = -0.08) {
+  const a = t - t0; if (a < 0 || a > d) return;
+  const sc = a < 0.18 ? ease(a / 0.18) * 1.25 : lerp(1.25, 1, clamp((a - 0.18) / 0.12, 0, 1));
+  ctx.save(); ctx.globalAlpha = a > d - 0.25 ? (d - a) / 0.25 : 1;
+  ctx.translate(x, y); ctx.rotate(rot); ctx.scale(sc, sc); text(s, 0, 0, size, col, '#222', size / 7); ctx.restore();
+}
+function bubble(s, t, t0, t1, x, y, tx, ty) {
+  if (t < t0 || t > t1) return;
+  const a = clamp((t - t0) / 0.12, 0, 1), lines = s.split('\n');
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(lerp(0.7, 1, a), lerp(0.7, 1, a));
+  ctx.font = '800 21px "DejaVu Sans",Arial,sans-serif';
+  const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 34, h = lines.length * 27 + 22;
+  ctx.beginPath(); ctx.moveTo(-14, h / 2 - 2); ctx.lineTo(tx - x, ty - y); ctx.lineTo(12, h / 2 - 2); ctx.fillStyle = '#fff'; ctx.fill();
+  rrect(-w / 2, -h / 2, w, h, 16, '#fff', '#222', 3);
+  ctx.beginPath(); ctx.moveTo(-12, h / 2 - 1); ctx.lineTo(12, h / 2 - 1); ctx.strokeStyle = '#fff'; ctx.lineWidth = 5; ctx.stroke();
+  lines.forEach((l, i) => text(l, 0, -h / 2 + 24 + i * 27, 21, '#222', null));
+  ctx.restore();
+}
+
+function drawChicken(o) {
+  const { x, y = 0, dir = 1, ph = 0, amp = 0, mood = 'normal', flap = 0, wet = false, hat = false, sq = 1, rot = 0, t = 0, push = false } = o;
+  ctx.save(); ctx.translate(x, WY + y); ctx.scale(dir, 1);
+  if (rot) { ctx.translate(0, -50); ctx.rotate(rot); ctx.translate(0, 50); }
+  const col = wet ? '#bcd9ea' : '#ffffff', edge = wet ? '#8fb6cf' : '#d4d4d4';
+  const bob = -Math.abs(Math.sin(ph)) * 3 * amp;
+  ctx.translate(0, bob); ctx.scale(1, sq);
+  // legs
+  for (const [hx, o2] of [[-8, 0], [10, PI]]) {
+    const a = Math.sin(ph + o2) * amp, fx = hx + a * 14, fy = -Math.max(0, Math.cos(ph + o2)) * amp * 8;
+    line(hx, -30, fx, fy - 2, '#ff9d1a', 5);
+    for (const d of [-7, 0, 7]) line(fx, fy - 2, fx + 8 + d * 0.3, fy - 2 + (d ? d * 0.15 : 0), '#ff9d1a', 3.5);
+  }
+  // tail
+  for (const r of [-0.9, -0.5, -0.1]) { ctx.save(); ctx.translate(-34, -66); ctx.rotate(r - 0.3); ell(-14, 0, 22, 8, col); ctx.strokeStyle = edge; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); }
+  ell(0, -55, 38, 31, col); ctx.strokeStyle = edge; ctx.lineWidth = 2.5; ctx.stroke();
+  // wing
+  ctx.save(); ctx.translate(-8, -62); ctx.rotate(flap ? Math.sin(t * 34) * 0.9 - 0.5 : 0.15);
+  ell(-4, 8, 24, 13, wet ? '#a9cbe0' : '#f3f3f3', 0.2); ctx.strokeStyle = edge; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
+  // head
+  circ(30, -92, 19, col); ctx.strokeStyle = edge; ctx.lineWidth = 2.5; ctx.stroke();
+  for (const [cx, cy, r] of [[22, -108, 7], [31, -113, 8], [40, -107, 6]]) circ(cx, cy, r, '#e8262b');
+  const open = mood === 'hungry' || mood === 'scared' || push;
+  poly([[46, -96], [66, -92 - (open ? 3 : 0)], [46, -88]], '#ffb020');
+  if (open) poly([[46, -88], [64, -86 + 4], [46, -82]], '#f29a0a');
+  ell(42, -76, 4, 8, '#e8262b');
+  if (mood === 'hungry') { // drool
+    const dl = 6 + Math.abs(Math.sin(t * 6)) * 12; line(52, -84, 52, -84 + dl, '#9fe0ff', 3); circ(52, -84 + dl, 3.5, '#9fe0ff');
+  }
+  // eye
+  const ex = 37, ey = -97;
+  if (mood === 'dizzy') {
+    circ(ex, ey, 9, '#fff'); ctx.strokeStyle = '#222'; ctx.lineWidth = 1.8; ctx.beginPath();
+    for (let a = 0; a < 12; a += 0.3) ctx.lineTo(ex + Math.cos(a + t * 8) * a * 0.6, ey + Math.sin(a + t * 8) * a * 0.6); ctx.stroke();
+  } else if (mood === 'scared') {
+    circ(ex, ey, 11, '#fff'); ctx.strokeStyle = '#222'; ctx.lineWidth = 2; ctx.stroke(); circ(ex + 1, ey, 2.4, '#111');
+  } else if (mood === 'hungry') {
+    circ(ex, ey, 9, '#fff'); circ(ex + 3, ey, 5.5, '#111'); circ(ex + 4, ey - 1, 2, '#fff');
+    line(ex - 8, ey - 9, ex + 8, ey - 13, '#444', 3);
+  } else if (mood === 'angry') {
+    circ(ex, ey, 8, '#fff'); circ(ex + 2, ey + 1, 4, '#111'); line(ex - 10, ey - 12, ex + 9, ey - 5, '#444', 4);
+  } else { circ(ex, ey, 8, '#fff'); circ(ex + 2, ey, 4.5, '#111'); circ(ex + 3, ey - 1, 1.5, '#fff'); }
+  if (mood === 'angry') for (let i = 0; i < 2; i++) { const a = ((t * 1.5 + i * 0.5) % 1); ctx.save(); ctx.globalAlpha = 1 - a; circ(20 - i * 8, -125 - a * 30, 5 + a * 6, '#e9e9e9'); ctx.restore(); }
+  if (hat) { // lily pad hat
+    ctx.save(); ctx.translate(28, -108); ctx.rotate(0.1); ell(0, 0, 34, 9, '#3f9f3f'); ell(0, -1, 34, 9, '#4cb84c'); ctx.strokeStyle = '#2f7f2f'; ctx.lineWidth = 2; ctx.stroke();
+    poly([[0, 0], [32, -6], [32, 6]], '#8fd3ff'); circ(-10, -8, 6, '#ff9ec7'); ctx.restore();
+  }
+  ctx.restore();
+}
+
+function star(x, y, r, fill) {
+  ctx.beginPath(); for (let i = 0; i < 10; i++) { const a = -PI / 2 + i * PI / 5, rr = i % 2 ? r * 0.45 : r; ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+  ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
+}
+
+// ---------- Pak Mat ----------
+function drawBucket(x, y, rot) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  poly([[-27, -22], [27, -22], [36, 30], [-36, 30]], '#4a90d9'); ctx.strokeStyle = '#27507f'; ctx.lineWidth = 3; ctx.stroke();
+  line(-31, -4, 31, -4, '#2f6db0', 4); line(-33, 14, 33, 14, '#2f6db0', 4);
+  ctx.beginPath(); ctx.arc(0, -22, 26, PI, 0); ctx.strokeStyle = '#27507f'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.restore();
+}
+function drawEggG(x, y, rot = 0, sc = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(sc, sc);
+  ell(0, 0, 11, 14, '#ffd93b'); ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 2; ctx.stroke(); ell(-4, -5, 3.5, 6, 'rgba(255,255,255,.85)'); ctx.restore();
+}
+function drawDurian(x, y, rot = 0) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  for (let i = 0; i < 16; i++) { const a = i * PI / 8; poly([[Math.cos(a - 0.12) * 22, Math.sin(a - 0.12) * 24], [Math.cos(a) * 31, Math.sin(a) * 33], [Math.cos(a + 0.12) * 22, Math.sin(a + 0.12) * 24]], '#6f8f1e'); }
+  ell(0, 0, 23, 25, '#9bb63a'); ctx.strokeStyle = '#5c7a14'; ctx.lineWidth = 2; ctx.stroke(); ell(-7, -8, 6, 8, 'rgba(255,255,255,.3)');
+  ctx.restore();
+}
+
+function drawMan(o) {
+  const { x, y = 0, dir = 1, pose = 'stand', ph = 0, t = 0, rot = 0, mood = 'normal', bucket = false, mouthAmp = 0, sq = 1, egg = false, sack = false } = o;
+  ctx.save(); ctx.translate(x, GY + y); ctx.scale(dir, 1);
+  if (rot) { ctx.translate(0, -60); ctx.rotate(rot); ctx.translate(0, 60); }
+  ctx.scale(1 / sq, sq);
+  const skin = '#d9a066', sleeve = '#2e8b57';
+  const walk = pose === 'walk' || pose === 'run';
+  const sw = walk ? Math.sin(ph) : 0;
+  // feet
+  ell(-14 + sw * 12, -5, 15, 6, '#5a3a1a'); ell(14 - sw * 12, -5, 15, 6, '#5a3a1a');
+  // sarong
+  const skirtSw = walk ? Math.sin(ph) * 5 : 0;
+  poly([[-26, -78], [26, -78], [30 + skirtSw, -12], [-30 + skirtSw, -12]], '#c0392b');
+  ctx.save(); ctx.beginPath(); ctx.moveTo(-26, -78); ctx.lineTo(26, -78); ctx.lineTo(30 + skirtSw, -12); ctx.lineTo(-30 + skirtSw, -12); ctx.closePath(); ctx.clip();
+  for (let k = -3; k <= 3; k++) { line(k * 10, -80, k * 10 + skirtSw * 0.5, -10, 'rgba(255,215,0,.75)', 2.5); }
+  for (let k = 0; k < 4; k++) line(-32, -70 + k * 17, 32, -70 + k * 17, 'rgba(255,215,0,.75)', 2.5);
+  ctx.restore();
+  // baju melayu
+  rrect(-27, -134, 54, 62, 10, sleeve, '#1d6b40', 2.5);
+  line(0, -130, 0, -90, '#1d6b40', 2); for (const by of [-120, -106, -92]) circ(0, by, 2.4, '#ffd93b');
+  // arms
+  const arm = (sx, sy, a1, a2, L1 = 28, L2 = 26) => {
+    const ex = sx + Math.sin(a1) * L1, ey = sy + Math.cos(a1) * L1, hx = ex + Math.sin(a2) * L2, hy = ey + Math.cos(a2) * L2;
+    line(sx, sy, ex, ey, sleeve, 15); line(ex, ey, hx, hy, sleeve, 13); circ(hx, hy, 8, skin); return [hx, hy];
+  };
+  const talk = Math.sin(t * 6);
+  let A1, A2;   // [a1, a2] for back/front arm (0 = hanging down, positive swings forward)
+  switch (pose) {
+    case 'talk': A1 = [0.2, 0.3]; A2 = [0.9 + talk * 0.5, 1.7 + talk * 0.7]; break;
+    case 'point': A1 = [0.1, 0.1]; A2 = [1.45, 1.55]; break;
+    case 'run': A1 = [Math.sin(ph) * 1.0, Math.sin(ph) * 0.8]; A2 = [-Math.sin(ph) * 1.0, -Math.sin(ph) * 0.8]; break;
+    case 'walk': A1 = [Math.sin(ph) * 0.5, 0.3]; A2 = [-Math.sin(ph) * 0.5, 0.3]; break;
+    case 'blind': A1 = [1.55, 1.6]; A2 = [1.4, 1.5]; break;
+    case 'fall': A1 = [2.2, 2.4]; A2 = [2.0, 2.2]; break;
+    case 'cheer': A1 = [PI - 0.7, PI - 0.4]; A2 = [PI + 0.7, PI + 0.4]; break;
+    case 'rub': A1 = [0.2, 0.3]; A2 = [2.6, 3.1]; break;
+    case 'idea': A1 = [0.2, 0.3]; A2 = [2.5, 3.0]; break;
+    case 'feed': A1 = [0.3, 0.4]; A2 = [1.0 + Math.sin(t * 9) * 0.5, 1.7 + Math.sin(t * 9) * 0.6]; break;
+    case 'hold': A1 = [PI - 0.5, PI - 0.3]; A2 = [PI + 0.9, PI + 0.4]; break;
+    case 'hop': A1 = [2.4, 2.6]; A2 = [-2.4, -2.6]; break;
+    default: A1 = [0.12, 0.15]; A2 = [-0.12, -0.15];
+  }
+  arm(-14, -122, A1[0], A1[1]);
+  if (sack) { ctx.save(); ctx.translate(30, -76); ell(0, 0, 14, 17, '#d8b66a'); ctx.strokeStyle = '#8a6a22'; ctx.lineWidth = 2; ctx.stroke(); line(-6, -14, 6, -14, '#8a6a22', 3); ctx.restore(); }
+  // head
+  ell(2, -154, 27, 29, skin); ctx.strokeStyle = '#a8703a'; ctx.lineWidth = 2; ctx.stroke();
+  circ(-22, -152, 6, skin);                                      // ear
+  ell(2, -188, 26, 14, '#1b1b1b'); rrect(-23, -190, 50, 22, 6, '#1b1b1b'); line(-23, -172, 27, -172, '#ffd93b', 3); // songkok
+  ell(20, -150, 5, 5, '#c98c52');                                // nose
+  // eyes
+  for (const ex of [6, 22]) {
+    if (mood === 'happy') { ctx.strokeStyle = '#222'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(ex, -158, 5, PI + 0.3, -0.3); ctx.stroke(); }
+    else if (mood === 'dizzy') { circ(ex, -160, 7, '#fff'); ctx.strokeStyle = '#222'; ctx.lineWidth = 1.6; ctx.beginPath(); for (let a = 0; a < 11; a += 0.3) ctx.lineTo(ex + Math.cos(a + t * 8) * a * 0.55, -160 + Math.sin(a + t * 8) * a * 0.55); ctx.stroke(); }
+    else if (mood === 'rich') { circ(ex, -160, 7.5, '#fff'); text('$', ex, -159, 11, '#2e8b57', null); }
+    else if (mood === 'shock') { circ(ex, -160, 8, '#fff'); circ(ex + 1, -160, 2, '#111'); }
+    else { circ(ex, -160, 6.5, '#fff'); circ(ex + 2, -160, 3.2, '#111'); circ(ex + 3, -161, 1.2, '#fff'); }
+    if (mood !== 'dizzy') line(ex - 7, -170 - (mood === 'shock' ? 4 : 0), ex + 7, -168 - (mood === 'shock' ? 4 : 0), '#222', 3);
+  }
+  // mustache + mouth
+  const mo = clamp(mouthAmp, 0, 1);
+  ctx.strokeStyle = '#1b1b1b'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(8, -142); ctx.quadraticCurveTo(22, -146, 30, -141); ctx.stroke();
+  if (mo > 0.05 || mood === 'shock') {
+    const h = 3 + (mood === 'shock' ? 10 : mo * 11);
+    ell(19, -132 + h * 0.3, 7.5, h, '#7a1d2c'); ell(19, -130 + h * 0.8, 5, h * 0.4, '#ff7a93');
+  } else { ctx.strokeStyle = '#5a2d0c'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(19, -135, mood === 'happy' ? 6 : 4, 0.2, PI - 0.2); ctx.stroke(); }
+  if (bucket) { ctx.save(); ctx.translate(2, -176); drawBucket(0, 0, 0.05); ctx.restore(); }
+  // front arm last (in front of torso)
+  const hand = arm(14, -122, A2[0], A2[1]);
+  if (egg && pose === 'hold') drawEggG(hand[0] - 2, hand[1] - 16, 0, 1.3);
+  ctx.restore();
+}
+
+// ---------- scene ----------
+function background(t) {
+  const g = ctx.createLinearGradient(0, 0, 0, 430); g.addColorStop(0, '#76c8f2'); g.addColorStop(1, '#f2fbff');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  circ(120, 90, 44, '#fff2a8'); circ(120, 90, 33, '#ffd93b');
+  for (let i = 0; i < 12; i++) { const a = i * PI / 6 + t * 0.4; line(120 + Math.cos(a) * 50, 90 + Math.sin(a) * 50, 120 + Math.cos(a) * 64, 90 + Math.sin(a) * 64, '#ffd93b', 4); }
+  for (let i = 0; i < 4; i++) { const cx = mod(i * 330 + 120 + t * 7, 1400) - 250, cy = 60 + (i * 53) % 90; for (const [dx, dy, r] of [[0, 0, 28], [30, -10, 36], [62, 0, 28], [32, 10, 28]]) circ(cx + dx, cy + dy, r, '#fff'); }
+  for (const [col, base, amp, fr, ph] of [['#9bdc8f', 390, 26, 0.006, 0], ['#76c96d', 420, 20, 0.009, 2]]) {
+    ctx.beginPath(); ctx.moveTo(0, H); for (let x = 0; x <= W; x += 10) ctx.lineTo(x, base - Math.sin(x * fr + ph) * amp - Math.sin(x * fr * 2.3 + ph) * amp * 0.4);
+    ctx.lineTo(W, H); ctx.fillStyle = col; ctx.fill();
+  }
+  // rumah kampung (stilt house)
+  const hx = 70; for (const px of [hx, hx + 40, hx + 110, hx + 150]) rrect(px, 350, 9, 100, 0, '#6b4420');
+  rrect(hx - 15, 270, 190, 82, 4, '#b98a50', '#6b4420', 3);
+  for (let k = 1; k < 6; k++) line(hx - 15 + k * 32, 272, hx - 15 + k * 32, 350, '#8f6a38', 2);
+  poly([[hx - 35, 272], [hx + 80, 205], [hx + 195, 272]], '#8a3a22'); line(hx - 35, 272, hx + 195, 272, '#5c2412', 4);
+  rrect(hx + 20, 295, 34, 40, 3, '#3b2a18'); rrect(hx + 100, 295, 40, 30, 3, '#f5e6a0', '#6b4420', 3);
+  for (let k = 0; k < 4; k++) line(hx + 35 + k * 28 - 12, 352, hx + 35 + k * 28 - 12, 450, 'rgba(0,0,0,0)', 1);
+  poly([[hx + 55, 352], [hx + 100, 352], [hx + 120, 450], [hx + 40, 450]], 'rgba(0,0,0,0)');
+  // ground
+  ctx.fillStyle = '#7ccf5a'; ctx.fillRect(0, GY - 5, W, H - GY + 5); ctx.fillStyle = '#62b648'; ctx.fillRect(0, GY - 5, W, 12);
+  ctx.fillStyle = '#c9a56a'; ctx.beginPath(); ctx.moveTo(0, 490); ctx.lineTo(W, 478); ctx.lineTo(W, 540); ctx.lineTo(0, 540); ctx.fill();
+  for (let i = 0; i < 9; i++) { const x = (i * 113 + 40) % W, y = 462 + (i * 17) % 24; line(x, y, x - 4, y - 12, '#4da23c', 3); line(x, y, x + 5, y - 11, '#4da23c', 3); line(x, y, x + 1, y - 14, '#4da23c', 3); }
+  // fence
+  for (let i = 0; i < 6; i++) { const fx = 250 + i * 55; if (fx > 500 && fx < 640) continue; rrect(fx, 405, 11, 50, 2, '#a07038'); }
+  line(250, 420, 520, 420, '#8a5a2b', 5); line(250, 440, 520, 440, '#8a5a2b', 5);
+}
+function palm(t) {
+  const px = 570;
+  ctx.beginPath(); ctx.moveTo(px - 14, GY); ctx.quadraticCurveTo(px - 8, 300, px + 6, 160); ctx.lineTo(px + 26, 160); ctx.quadraticCurveTo(px + 20, 300, px + 18, GY); ctx.closePath(); ctx.fillStyle = '#9a6a3a'; ctx.fill(); ctx.strokeStyle = '#6b4420'; ctx.lineWidth = 3; ctx.stroke();
+  for (let k = 0; k < 9; k++) line(px - 10 + (k % 2) * 4, GY - 20 - k * 33, px + 16 + (k % 2) * 3, GY - 20 - k * 33 + 6, '#7a5028', 2);
+  for (const [ang, len] of [[-2.6, 110], [-2.1, 120], [-1.6, 100], [-1.1, 120], [-0.6, 110], [-3.0, 90], [-0.2, 90]]) {
+    ctx.save(); ctx.translate(px + 16, 160); ctx.rotate(ang + Math.sin(t * 1.5 + ang) * 0.03); ell(len / 2, 0, len / 2, 10, '#3f9f3f'); line(0, 0, len, 0, '#2f7f2f', 2); ctx.restore();
+  }
+  for (const [cx, cy] of [[px + 4, 170], [px + 26, 172]]) circ(cx, cy, 9, '#7a5a2a');
+}
+function coop() {
+  const cx = 830;
+  rrect(cx - 60, GY - 82, 120, 84, 4, '#c0392b', '#7a2418', 3); poly([[cx - 72, GY - 82], [cx, GY - 128], [cx + 72, GY - 82]], '#8e2a1e');
+  rrect(cx - 18, GY - 52, 36, 36, 4, '#2a1408'); line(cx - 60, GY - 50, cx + 60, GY - 50, '#7a2418', 2);
+  text('REBAN', cx, GY - 68, 14, '#fff', null);
+}
+function bulb(x, y, s = 1) { ctx.save(); ctx.translate(x, y); ctx.scale(s, s); circ(0, 0, 16, '#fff7a0'); ctx.strokeStyle = '#d4a900'; ctx.lineWidth = 3; ctx.stroke(); rrect(-7, 14, 14, 10, 2, '#999'); for (let i = 0; i < 8; i++) { const a = i * PI / 4; line(Math.cos(a) * 22, Math.sin(a) * 22, Math.cos(a) * 32, Math.sin(a) * 32, '#ffd93b', 3); } ctx.restore(); }
+
+// ---------- state ----------
+function man(t) {
+  const s = { x: 300, y: 0, dir: 1, pose: 'stand', ph: 0, t, rot: 0, mood: 'normal', bucket: false, sq: 1, egg: false, sack: false };
+  if (t < 1.0) { s.x = lerp(-100, 300, t); s.pose = 'walk'; s.ph = t * 11; }
+  else if (t < 8.5) { s.pose = 'talk'; s.mood = 'normal'; }
+  else if (t < 10.0) { s.pose = 'point'; s.mood = 'shock'; }
+  else if (t < 11.2) { const u = seg(t, 10.0, 11.2); s.x = lerp(300, 140, u); s.dir = -1; s.pose = 'run'; s.ph = t * 16; s.mood = 'shock'; }
+  else if (t < 11.7) { s.x = 140; s.dir = -1; s.pose = 'stand'; s.mood = 'shock'; }
+  else if (t < 12.9) { const u = seg(t, 11.7, 12.9); s.x = lerp(140, 225, u); s.pose = 'run'; s.ph = t * 14; s.mood = 'shock'; }
+  else if (t < 13.5) { const u = seg(t, 12.9, 13.5); s.x = lerp(225, 275, u); s.pose = 'fall'; s.rot = ease(u) * 1.45; s.y = ease(u) * 22; s.mood = 'shock'; }
+  else if (t < 14.0) { s.x = 275; s.pose = 'fall'; s.rot = 1.45; s.y = 22; s.mood = 'dizzy'; s.bucket = t > 13.6; }
+  else if (t < 14.8) { const u = seg(t, 14.0, 14.8); s.x = 275; s.pose = 'blind'; s.rot = 1.45 * (1 - ease(u)); s.y = 22 * (1 - ease(u)); s.bucket = true; s.mood = 'normal'; }
+  else if (t < 17.4) { s.x = 275 + Math.sin((t - 14.8) * 2.2) * 70; s.dir = Math.cos((t - 14.8) * 2.2) >= 0 ? 1 : -1; s.pose = 'blind'; s.bucket = true; s.rot = Math.sin((t - 14.8) * 4.4) * 0.06; s.mood = 'normal'; }
+  else if (t < 17.9) { s.x = 275; s.pose = 'cheer'; s.mood = 'dizzy'; }
+  else if (t < 18.8) { s.x = lerp(275, 520, ease(seg(t, 17.9, 18.8))); s.pose = 'walk'; s.ph = t * 10; s.mood = 'normal'; }
+  else if (t < 19.15) { s.x = 520; s.mood = 'normal'; s.pose = 'stand'; }
+  else if (t < 19.5) { s.x = 520; s.pose = 'stand'; s.sq = 0.82; s.mood = 'shock'; }
+  else if (t < 23.4) { s.x = 520; s.pose = 'rub'; s.mood = t < 21 ? 'dizzy' : 'normal'; }
+  else if (t < 25.0) { s.x = 520; s.pose = 'idea'; s.mood = 'normal'; s.sack = t > 24.4; }
+  else if (t < 32.05) { s.x = 520; s.pose = 'feed'; s.mood = 'happy'; s.sack = true; }
+  else if (t < 36.0) { s.x = 520; s.pose = 'hold'; s.egg = t > 32.3; s.mood = t > 33 ? 'rich' : 'shock'; }
+  else if (t < 36.6) { s.x = 520; s.pose = 'hop'; s.y = -arc(seg(t, 36.0, 36.5)) * 40; s.mood = 'shock'; }
+  else { s.x = 520; s.pose = 'stand'; s.mood = 'happy'; }
+  return s;
+}
+function hen(t) {
+  const s = { x: 830, y: 0, dir: -1, ph: 0, amp: 0, mood: 'normal', flap: 0, t, rot: 0, sq: 1 };
+  if (t < 8.7) { s.mood = 'normal'; s.sq = 1 + Math.sin(t * 3) * 0.02; }
+  else if (t < 10.6) { s.x = lerp(830, -100, seg(t, 8.7, 10.6)); s.amp = 1; s.ph = t * 20; s.mood = 'normal'; }
+  else if (t < 11.4) { s.x = -150; }
+  else if (t < 12.6) { s.x = lerp(-100, 700, seg(t, 11.4, 12.6)); s.dir = 1; s.amp = 1; s.ph = t * 20; }
+  else if (t < 13.8) { s.x = 700; s.dir = -1; s.rot = Math.sin(t * 40) * 0.05; }
+  else if (t < 17.4) { const a = (t - 13.8) * 2.6; s.x = 275 + Math.sin(a) * 150; s.dir = Math.cos(a) >= 0 ? 1 : -1; s.amp = 1; s.ph = t * 20; }
+  else if (t < 18.8) { s.x = lerp(275 + Math.sin((17.4 - 13.8) * 2.6) * 150, 650, ease(seg(t, 17.4, 18.8))); s.dir = 1; s.amp = 1; s.ph = t * 18; }
+  else if (t < 25.0) { s.x = 660; s.dir = -1; s.mood = t > 19.4 ? 'hungry' : 'normal'; }
+  else if (t < 30.0) { s.x = 660; s.dir = -1; s.mood = 'normal'; s.rot = Math.abs(Math.sin(t * 9)) * 0.7; }
+  else if (t < 31.6) { s.x = 660; s.dir = -1; s.mood = 'normal'; s.sq = 1 + Math.sin(t * 4) * 0.03; }
+  else if (t < 32.6) { s.x = 660; s.dir = -1; s.sq = t < 32.0 ? 0.88 : 1; s.mood = 'normal'; }
+  else if (t < 35.7) { s.x = 660; s.dir = -1; s.mood = 'normal'; }
+  else if (t < 36.0) { s.x = lerp(660, 585, seg(t, 35.7, 36.0)); s.dir = -1; s.amp = 1; s.ph = t * 22; s.mood = 'angry'; }
+  else { s.x = 585; s.dir = -1; s.mood = 'angry'; s.rot = Math.abs(Math.sin(t * 12)) * 0.6; }
+  return s;
+}
+
+function caption(t) {
+  for (const [a, d, s] of LINES) if (t >= a - 0.1 && t < a + d + 0.3) {
+    const al = Math.min(clamp((t - a + 0.1) / 0.15, 0, 1), clamp((a + d + 0.3 - t) / 0.2, 0, 1));
+    ctx.save(); ctx.globalAlpha = al; ctx.font = '800 24px "DejaVu Sans",Arial,sans-serif';
+    const lines = []; let cur = ''; for (const w of ('Pak Mat: ' + s).split(' ')) { if (ctx.measureText(cur + ' ' + w).width > 760) { lines.push(cur); cur = w; } else cur = cur ? cur + ' ' + w : w; } lines.push(cur);
+    const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 44, h = lines.length * 30 + 14;
+    rrect(W / 2 - w / 2, H - 20 - h, w, h, 16, 'rgba(0,0,0,.66)');
+    lines.forEach((l, i) => text(l, W / 2, H - 20 - h + 22 + i * 30, 24, '#fff', null)); ctx.restore();
+  }
+}
+
+// ---------- render ----------
+function render(t) {
+  ctx.setTransform(1280 / W, 0, 0, 720 / H, 0, 0);
+  background(t);
+  palm(t);
+  const m = man(t), h = hen(t);
+
+  // durian
+  if (t < 19.0) drawDurian(574, 200 + Math.sin(t * 2) * 2);
+  else if (t < 19.15) drawDurian(574 - (t - 19.0) * 330, lerp(200, 262, seg(t, 19.0, 19.15)));
+  else { const a = Math.min(t - 19.15, 0.89); drawDurian(522 + a * 85, Math.min(GY - 25, 262 - 280 * a + 520 * a * a), a * 7); }
+  // bucket
+  if (t < 12.9) drawBucket(220, GY - 30, 0);
+  else if (t < 13.6) { const u = seg(t, 12.9, 13.6); drawBucket(lerp(220, 300, u), lerp(GY - 30, GY - 70, u) - arc(u) * 120, u * 9); }
+  else if (t >= 17.4) { const a = Math.min(t - 17.4, 0.9); drawBucket(275 - a * 60, Math.min(GY - 30, GY - 190 - 250 * a + 420 * a * a), a < 0.9 ? a * 8 : 0.15); }
+  drawChicken({ x: h.x, y: h.y, dir: h.dir, ph: h.ph, amp: h.amp, mood: h.mood, flap: h.flap, rot: h.rot, sq: h.sq, t, push: t > 31.6 && t < 32.4 });
+  coop();
+  // grains
+  if (t > 26.0 && t < 30.2) for (let i = 0; i < 18; i++) {
+    const a = t - (26.0 + i * 0.07); if (a < 0) continue;
+    if (t > 29.2 && i % 3 === 0) continue;
+    circ(lerp(560, 620 + (i % 6) * 10, Math.min(a * 1.6, 1)), Math.min(GY - 3, GY - 120 - 80 * a + 500 * a * a), 3, '#f1c232');
+  }
+  drawMan({ x: m.x, y: m.y, dir: m.dir, pose: m.pose, ph: m.ph, t, rot: m.rot, mood: m.mood, bucket: m.bucket && t < 17.4, mouthAmp: mouth(t), sq: m.sq, egg: m.egg, sack: m.sack });
+
+  // golden egg lay + roll
+  if (t >= 31.8 && t < 32.6) { const u = seg(t, 31.8, 32.6); drawEggG(lerp(645, 585, u), GY - 24 - arc(u) * 30 + u * 8, u * 6); }
+  if (t > 31.8 && t < 33.5) for (let i = 0; i < 6; i++) { const a = (t * 2 + i / 6) % 1; ctx.save(); ctx.globalAlpha = 1 - a; star(620 + Math.cos(i * 2) * 40, GY - 50 - a * 40, 7, '#fff3a0'); ctx.restore(); }
+  // effects
+  if ((t > 19.15 && t < 21.0) || (t > 13.5 && t < 14.0) || (t > 17.4 && t < 17.9)) for (let i = 0; i < 3; i++) { const a = t * 6 + i * 2.09, cx = (t < 15 ? 275 : t < 18 ? 275 : 520); ctx.save(); ctx.translate(cx + Math.cos(a) * 30, GY - 205 + Math.sin(a) * 8); ctx.rotate(a); text('*', 0, 0, 26, '#ffd93b', '#b8860b', 3); ctx.restore(); }
+  if (t > 23.4 && t < 25.0) bulb(m.x + 10, GY - 245 + Math.sin(t * 8) * 3, 1.2);
+  if (t > 19.4 && t < 25.0) { // drool/hungry hint
+    const dl = Math.sin(t * 5) * 0.5 + 0.5; ctx.save(); ctx.globalAlpha = 0.9; text('?', 660, GY - 150 + dl * 4, 30, '#fff', '#222', 5); ctx.restore();
+  }
+  if (t > 33.2 && t < 36) for (let i = 0; i < 4; i++) { const a = ((t * 0.8 + i / 4) % 1); ctx.save(); ctx.globalAlpha = 1 - a; text('$', 470 + i * 34, GY - 250 - a * 60, 30, '#2e8b57', '#fff', 5); ctx.restore(); }
+
+  // sfx
+  pop('BUK!', t, 12.95, 0.8, 300, 340, '#ffd93b', 64);
+  pop('KLONTANG!', t, 13.55, 1.0, 300, 220, '#9be8ff', 62, 0.08);
+  pop('BUK!!', t, 19.1, 0.9, 560, 200, '#ffd93b', 72, 0.1);
+  pop('NYAM NYAM', t, 27.0, 1.4, 640, 330, '#ffb347', 50);
+  pop('TING!', t, 31.9, 1.0, 630, 330, '#ffe14d', 66, 0.08);
+  pop('AUCH!', t, 36.0, 0.9, 470, 230, '#ff6b35', 70, 0.1);
+  pop('KOK KOK!', t, 11.5, 0.8, 330, 330, '#fff', 40);
+
+  caption(t);
+  if (t > 36.7) {
+    const a = ease((t - 36.7) / 0.8);
+    ctx.fillStyle = `rgba(30,24,16,${0.8 * a})`; ctx.fillRect(0, 0, W, H);
+    ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, H / 2 - 20); ctx.scale(lerp(0.6, 1, a), lerp(0.6, 1, a));
+    text('TAMAT', 0, -30, 110, '#ffd93b', '#222', 14);
+    text('Pak Mat 1  -  Ayam 1', 0, 60, 40, '#fff', '#222', 7);
+    text('(telur emasnya masih ada)', 0, 108, 22, '#ffe9b0', null);
+    ctx.restore();
+  }
+}
+window.render = render; window.DURATION = DUR; window.EVENTS = {};
+if (!window.__RENDER_ONLY) { let st = performance.now(); (function loop() { render(((performance.now() - st) / 1000) % DUR); requestAnimationFrame(loop); })(); }
+</script>
+</body>
+</html>
