@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Ayam vs Katak</title>
+<style>
+  html,body{margin:0;background:#111;}
+  canvas{display:block;width:100vw;max-width:1280px;margin:0 auto;aspect-ratio:16/9;}
+</style>
+</head>
+<body>
+<canvas id="c" width="1280" height="720"></canvas>
+<script>
+const W = 960, H = 540, WY = 452, DUR = 25, PI = Math.PI;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const ease = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
+const seg = (t, a, b) => clamp((t - a) / (b - a), 0, 1);
+const arc = u => Math.sin(clamp(u, 0, 1) * PI);
+const BOT = 700;
+const PADS = [350, 450, 550, 650];
+
+// ---------- helpers ----------
+function ell(x, y, rx, ry, fill, rot = 0) { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, rot, 0, PI * 2); ctx.fillStyle = fill; ctx.fill(); }
+function circ(x, y, r, fill) { ell(x, y, r, r, fill); }
+function line(x1, y1, x2, y2, col, w) { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+function poly(pts, fill) { ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); }
+function rrect(x, y, w, h, r, fill, stroke, lw = 3) {
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, r);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); }
+}
+function text(s, x, y, size, fill = '#fff', stroke = '#222', lw = 6, align = 'center') {
+  ctx.font = `900 ${size}px "DejaVu Sans","Arial Black",Arial,sans-serif`;
+  ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.strokeText(s, x, y); }
+  ctx.fillStyle = fill; ctx.fillText(s, x, y);
+}
+function sweat(x, y, s = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.beginPath();
+  ctx.moveTo(0, -12); ctx.quadraticCurveTo(9, 2, 0, 8); ctx.quadraticCurveTo(-9, 2, 0, -12);
+  ctx.fillStyle = '#7fd4ff'; ctx.fill(); ctx.strokeStyle = '#2b88c8'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+}
+function heart(x, y, s, fill) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.beginPath();
+  ctx.moveTo(0, 6); ctx.bezierCurveTo(-14, -4, -8, -16, 0, -8); ctx.bezierCurveTo(8, -16, 14, -4, 0, 6);
+  ctx.fillStyle = fill; ctx.fill(); ctx.restore();
+}
+function pop(s, t, t0, d, x, y, col, size, rot = -0.08) {
+  const a = t - t0; if (a < 0 || a > d) return;
+  const sc = a < 0.18 ? ease(a / 0.18) * 1.25 : lerp(1.25, 1, clamp((a - 0.18) / 0.12, 0, 1));
+  ctx.save(); ctx.globalAlpha = a > d - 0.25 ? (d - a) / 0.25 : 1;
+  ctx.translate(x, y); ctx.rotate(rot); ctx.scale(sc, sc); text(s, 0, 0, size, col, '#222', size / 7); ctx.restore();
+}
+function bubble(s, t, t0, t1, x, y, tx, ty) {
+  if (t < t0 || t > t1) return;
+  const a = clamp((t - t0) / 0.12, 0, 1), lines = s.split('\n');
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(lerp(0.7, 1, a), lerp(0.7, 1, a));
+  ctx.font = '800 21px "DejaVu Sans",Arial,sans-serif';
+  const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 34, h = lines.length * 27 + 22;
+  ctx.beginPath(); ctx.moveTo(-14, h / 2 - 2); ctx.lineTo(tx - x, ty - y); ctx.lineTo(12, h / 2 - 2); ctx.fillStyle = '#fff'; ctx.fill();
+  rrect(-w / 2, -h / 2, w, h, 16, '#fff', '#222', 3);
+  ctx.beginPath(); ctx.moveTo(-12, h / 2 - 1); ctx.lineTo(12, h / 2 - 1); ctx.strokeStyle = '#fff'; ctx.lineWidth = 5; ctx.stroke();
+  lines.forEach((l, i) => text(l, 0, -h / 2 + 24 + i * 27, 21, '#222', null));
+  ctx.restore();
+}
+
+// ---------- characters ----------
+function drawChicken(o) {
+  const { x, y = 0, dir = 1, ph = 0, amp = 0, mood = 'normal', flap = 0, wet = false, hat = false, sq = 1, rot = 0, t = 0, push = false } = o;
+  ctx.save(); ctx.translate(x, WY + y); ctx.scale(dir, 1);
+  if (rot) { ctx.translate(0, -50); ctx.rotate(rot); ctx.translate(0, 50); }
+  const col = wet ? '#bcd9ea' : '#ffffff', edge = wet ? '#8fb6cf' : '#d4d4d4';
+  const bob = -Math.abs(Math.sin(ph)) * 3 * amp;
+  ctx.translate(0, bob); ctx.scale(1, sq);
+  // legs
+  for (const [hx, o2] of [[-8, 0], [10, PI]]) {
+    const a = Math.sin(ph + o2) * amp, fx = hx + a * 14, fy = -Math.max(0, Math.cos(ph + o2)) * amp * 8;
+    line(hx, -30, fx, fy - 2, '#ff9d1a', 5);
+    for (const d of [-7, 0, 7]) line(fx, fy - 2, fx + 8 + d * 0.3, fy - 2 + (d ? d * 0.15 : 0), '#ff9d1a', 3.5);
+  }
+  // tail
+  for (const r of [-0.9, -0.5, -0.1]) { ctx.save(); ctx.translate(-34, -66); ctx.rotate(r - 0.3); ell(-14, 0, 22, 8, col); ctx.strokeStyle = edge; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); }
+  ell(0, -55, 38, 31, col); ctx.strokeStyle = edge; ctx.lineWidth = 2.5; ctx.stroke();
+  // wing
+  ctx.save(); ctx.translate(-8, -62); ctx.rotate(flap ? Math.sin(t * 34) * 0.9 - 0.5 : 0.15);
+  ell(-4, 8, 24, 13, wet ? '#a9cbe0' : '#f3f3f3', 0.2); ctx.strokeStyle = edge; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
+  // head
+  circ(30, -92, 19, col); ctx.strokeStyle = edge; ctx.lineWidth = 2.5; ctx.stroke();
+  for (const [cx, cy, r] of [[22, -108, 7], [31, -113, 8], [40, -107, 6]]) circ(cx, cy, r, '#e8262b');
+  const open = mood === 'hungry' || mood === 'scared' || push;
+  poly([[46, -96], [66, -92 - (open ? 3 : 0)], [46, -88]], '#ffb020');
+  if (open) poly([[46, -88], [64, -86 + 4], [46, -82]], '#f29a0a');
+  ell(42, -76, 4, 8, '#e8262b');
+  if (mood === 'hungry') { // drool
+    const dl = 6 + Math.abs(Math.sin(t * 6)) * 12; line(52, -84, 52, -84 + dl, '#9fe0ff', 3); circ(52, -84 + dl, 3.5, '#9fe0ff');
+  }
+  // eye
+  const ex = 37, ey = -97;
+  if (mood === 'dizzy') {
+    circ(ex, ey, 9, '#fff'); ctx.strokeStyle = '#222'; ctx.lineWidth = 1.8; ctx.beginPath();
+    for (let a = 0; a < 12; a += 0.3) ctx.lineTo(ex + Math.cos(a + t * 8) * a * 0.6, ey + Math.sin(a + t * 8) * a * 0.6); ctx.stroke();
+  } else if (mood === 'scared') {
+    circ(ex, ey, 11, '#fff'); ctx.strokeStyle = '#222'; ctx.lineWidth = 2; ctx.stroke(); circ(ex + 1, ey, 2.4, '#111');
+  } else if (mood === 'hungry') {
+    circ(ex, ey, 9, '#fff'); circ(ex + 3, ey, 5.5, '#111'); circ(ex + 4, ey - 1, 2, '#fff');
+    line(ex - 8, ey - 9, ex + 8, ey - 13, '#444', 3);
+  } else if (mood === 'angry') {
+    circ(ex, ey, 8, '#fff'); circ(ex + 2, ey + 1, 4, '#111'); line(ex - 10, ey - 12, ex + 9, ey - 5, '#444', 4);
+  } else { circ(ex, ey, 8, '#fff'); circ(ex + 2, ey, 4.5, '#111'); circ(ex + 3, ey - 1, 1.5, '#fff'); }
+  if (mood === 'angry') for (let i = 0; i < 2; i++) { const a = ((t * 1.5 + i * 0.5) % 1); ctx.save(); ctx.globalAlpha = 1 - a; circ(20 - i * 8, -125 - a * 30, 5 + a * 6, '#e9e9e9'); ctx.restore(); }
+  if (hat) { // lily pad hat
+    ctx.save(); ctx.translate(28, -108); ctx.rotate(0.1); ell(0, 0, 34, 9, '#3f9f3f'); ell(0, -1, 34, 9, '#4cb84c'); ctx.strokeStyle = '#2f7f2f'; ctx.lineWidth = 2; ctx.stroke();
+    poly([[0, 0], [32, -6], [32, 6]], '#8fd3ff'); circ(-10, -8, 6, '#ff9ec7'); ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawFrog(o) {
+  const { x, y = 0, dir = 1, sc = 1, air = 0, sq = 1, rot = 0, mood = 'smug', tongue = 0, tAng = 0, t = 0, shell = false, yolk = 0, col = '#5fbf4a', dark = '#46a335', mouth = 0, belly = '#cdf29c' } = o;
+  ctx.save(); ctx.translate(x, WY + y); ctx.scale(dir * sc, sc);
+  if (rot) { ctx.translate(0, -22); ctx.rotate(rot); ctx.translate(0, 22); }
+  ctx.scale(1 / sq, sq);
+  // hind leg
+  if (air > 0.05) { line(-12, -18, -12 - 34 * air, -18 + 6 * air, dark, 11); ell(-12 - 38 * air, -16 + 6 * air, 11, 4.5, dark); line(14, -12, 14 + 18 * air, -12 + 6, dark, 7); }
+  else { ell(-14, -14, 17, 12, dark, -0.4); ell(-4, -3, 19, 4.5, dark); line(16, -10, 24, -2, dark, 7); }
+  ell(0, -23, 30, 21, col);
+  ell(7, -14, 22, 11, belly);
+  // eyes
+  for (const ex of [16, 0]) {
+    circ(ex, -42, 10.5, col); circ(ex, -42, 8.5, '#fff');
+    if (mood === 'scared') circ(ex + 1, -42, 2.4, '#111');
+    else if (mood === 'sad') { circ(ex + 1, -43, 4.2, '#111'); }
+    else circ(ex + 2, -42, 4.2, '#111');
+    if (mood === 'smug') { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(ex, -42, 9, PI, 0); ctx.fill(); line(ex - 9, -42, ex + 9, -42, dark, 2); }
+  }
+  // mouth
+  if (mouth > 0) {
+    ctx.beginPath(); ctx.moveTo(30, -26); ctx.quadraticCurveTo(14, -26 + 30 * mouth, -4, -24); ctx.quadraticCurveTo(14, -30, 30, -26);
+    ctx.fillStyle = '#7a1d2c'; ctx.fill(); ctx.strokeStyle = dark; ctx.lineWidth = 2.5; ctx.stroke();
+    ell(14, -14 + 6 * (1 - mouth), 9, 5 * mouth + 1, '#ff7a93');
+  } else { ctx.strokeStyle = dark; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(30, -25); ctx.quadraticCurveTo(14, mood === 'sad' ? -26 : -18, -2, -25); ctx.stroke(); }
+  circ(27, -30, 1.8, dark);
+  if (tongue > 0) { ctx.save(); ctx.translate(30, -25); ctx.rotate(tAng); line(0, 0, tongue, 0, '#ff6f91', 6); circ(tongue, 0, 6.5, '#ff6f91'); ctx.restore(); }
+  if (yolk > 0) { ctx.save(); ctx.globalAlpha = Math.min(1, yolk); ell(8, -38, 22, 14, '#ffd93b'); ell(14, -30, 8, 12, '#ffe98a'); ell(-6, -30, 5, 14 + Math.sin(t * 3) * 3, '#ffd93b'); ctx.restore(); }
+  if (shell) { ctx.save(); ctx.translate(8, -52); ctx.rotate(-0.15);
+    ctx.beginPath(); ctx.moveTo(-16, 4); ctx.lineTo(-11, -4); ctx.lineTo(-6, 3); ctx.lineTo(0, -7); ctx.lineTo(6, 3); ctx.lineTo(11, -4); ctx.lineTo(16, 4); ctx.quadraticCurveTo(0, -30, -16, 4);
+    ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#bbb'; ctx.lineWidth = 2; ctx.stroke(); ell(0, 6, 7, 4, '#ffd93b'); ctx.restore(); }
+  ctx.restore();
+}
+
+function drawEgg(x, y, rot = 0) { ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ell(0, 0, 10, 13, '#fffdf5'); ctx.strokeStyle = '#d8cfae'; ctx.lineWidth = 2; ctx.stroke(); ell(-3, -4, 3, 5, 'rgba(255,255,255,.9)'); ctx.restore(); }
+function drawPad(x, dy = 0, fl = false) {
+  ctx.save(); ctx.translate(x, WY + dy);
+  ell(0, 0, 48, 10, '#3a9a3a'); ell(0, -1.5, 48, 9, '#52c052'); poly([[0, -1], [48, -7], [48, 5]], '#8fd3ff');
+  ctx.strokeStyle = '#2d7d2d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(0, -1.5, 48, 9, 0, 0, PI * 2); ctx.stroke();
+  if (fl) { circ(-18, -8, 7, '#ffb6d5'); circ(-18, -8, 3, '#ffe14d'); }
+  ctx.restore();
+}
+function drawTurtle(x, dy) {
+  ctx.save(); ctx.translate(x, WY + dy);
+  ell(60, -10, 15, 12, '#8aa84a'); circ(66, -13, 2.5, '#111'); ctx.strokeStyle = '#3f5a1a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(66, -8, 7, 0.2, 1.4); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(0, 0, 56, 36, 0, PI, PI * 2); ctx.closePath(); ctx.fillStyle = '#6b8e3a'; ctx.fill(); ctx.strokeStyle = '#3f5a1a'; ctx.lineWidth = 3; ctx.stroke();
+  for (const [a, b] of [[-30, -8], [0, -8], [30, -8], [-15, -26], [15, -26]]) { ctx.beginPath(); for (let i = 0; i < 6; i++) ctx.lineTo(a + Math.cos(i * PI / 3) * 12, b + Math.sin(i * PI / 3) * 10); ctx.closePath(); ctx.strokeStyle = '#4a6a24'; ctx.lineWidth = 2; ctx.stroke(); }
+  ctx.restore();
+}
+
+// ---------- scene ----------
+function background(t) {
+  const g = ctx.createLinearGradient(0, 0, 0, 440); g.addColorStop(0, '#7ccbf7'); g.addColorStop(1, '#e9f8ff');
+  ctx.fillStyle = g; ctx.fillRect(-300, -400, W + 600, 1200);
+  circ(190, 225, 44, '#fff2a8'); circ(190, 225, 33, '#ffd93b');
+  for (let i = 0; i < 12; i++) { const a = i * PI / 6 + t * 0.4; line(190 + Math.cos(a) * 50, 225 + Math.sin(a) * 50, 190 + Math.cos(a) * 64, 225 + Math.sin(a) * 64, '#ffd93b', 4); }
+  for (let i = 0; i < 4; i++) { const cx = ((i * 300 + 120 + t * 7) % 1300) - 200, cy = 190 + (i * 47) % 90; for (const [dx, dy, r] of [[0, 0, 28], [30, -10, 36], [62, 0, 28], [32, 10, 28]]) circ(cx + dx, cy + dy, r, '#fff'); }
+  for (const [col, base, amp, fr, ph] of [['#9bdc8f', 390, 26, 0.006, 0], ['#76c96d', 420, 20, 0.009, 2]]) {
+    ctx.beginPath(); ctx.moveTo(-300, BOT);
+    for (let x = -300; x <= W + 300; x += 10) ctx.lineTo(x, base - Math.sin(x * fr + ph) * amp - Math.sin(x * fr * 2.3 + ph) * amp * 0.4);
+    ctx.lineTo(W + 300, BOT); ctx.fillStyle = col; ctx.fill();
+  }
+  // barn
+  rrect(790, 340, 110, 80, 0, '#c0392b', '#7b2418', 3); poly([[780, 342], [845, 290], [910, 342]], '#8e2a1e');
+  rrect(823, 372, 44, 48, 0, '#f5e6c8', '#7b2418', 3); line(823, 372, 867, 420, '#7b2418', 3); line(867, 372, 823, 420, '#7b2418', 3);
+  // trees
+  for (const tx of [60, 240]) { rrect(tx - 9, 350, 18, 80, 3, '#8a5a2b'); circ(tx, 330, 46, '#3fae4a'); circ(tx - 30, 352, 30, '#4cc058'); circ(tx + 30, 352, 32, '#4cc058'); }
+  // banks
+  ctx.fillStyle = '#7ccf5a'; ctx.fillRect(-300, WY - 4, 600, BOT - WY + 4); ctx.fillRect(805, WY - 4, W - 505, BOT - WY + 4);
+  ctx.fillStyle = '#62b648'; ctx.fillRect(-300, WY - 4, 600, 10); ctx.fillRect(805, WY - 4, W - 505, 10);
+  ctx.fillStyle = '#8a6a3a'; ctx.beginPath(); ctx.moveTo(290, WY - 4); ctx.lineTo(310, BOT); ctx.lineTo(-300, BOT); ctx.lineTo(-300, WY - 4); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(815, WY - 4); ctx.lineTo(795, BOT); ctx.lineTo(W + 300, BOT); ctx.lineTo(W + 300, WY - 4); ctx.fill();
+  ctx.fillStyle = '#7ccf5a'; ctx.fillRect(-300, WY - 4, 595, 8); ctx.fillRect(812, WY - 4, W - 512, 8);
+  // pond back
+  const wg = ctx.createLinearGradient(0, WY, 0, BOT); wg.addColorStop(0, '#6bc8f0'); wg.addColorStop(1, '#2a7fba');
+  ctx.beginPath(); ctx.moveTo(296, WY); ctx.lineTo(316, BOT); ctx.lineTo(790, BOT); ctx.lineTo(810, WY); ctx.fillStyle = wg; ctx.fill();
+  // reeds
+  for (const rx of [305, 318, 790, 802]) { line(rx, WY, rx + (rx < 500 ? -4 : 4), WY - 70, '#4d8f2f', 4); ell(rx + (rx < 500 ? -4 : 4), WY - 78, 5, 14, '#7a4a20'); }
+}
+function pondFront(t) {
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(296, WY); ctx.lineTo(316, BOT); ctx.lineTo(790, BOT); ctx.lineTo(810, WY); ctx.closePath();
+  ctx.clip();
+  ctx.fillStyle = 'rgba(58,160,216,0.45)'; ctx.fillRect(280, WY, 560, BOT - WY);
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 3; ctx.beginPath();
+  for (let x = 290; x <= 820; x += 8) ctx.lineTo(x, WY + Math.sin(x * 0.05 + t * 3) * 2.5); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 2;
+  for (let k = 0; k < 4; k++) { ctx.beginPath(); for (let x = 300; x <= 810; x += 10) ctx.lineTo(x, WY + 22 + k * 20 + Math.sin(x * 0.04 + t * 2 + k) * 3); ctx.stroke(); }
+  ctx.restore();
+}
+function splash(t, t0, x, big = 1) {
+  const a = t - t0; if (a < 0 || a > 1.0) return;
+  ctx.save();
+  ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(x, WY + 4, 20 + a * 90 * big, 5 + a * 14, 0, 0, PI * 2); ctx.stroke();
+  for (let i = 0; i < 12; i++) { const vx = (i - 5.5) * 24 * big, vy = -(280 + (i % 4) * 50) * big; circ(x + vx * a, WY + vy * a + 900 * a * a, 5 * big * (1 - a * 0.5), '#bfe9ff'); }
+  ctx.restore();
+}
+function feathers(t, a, b, who) {
+  for (let k = 0; k < 40; k++) {
+    const tb = a + k * 0.045; if (tb > b) break; const age = t - tb; if (age < 0 || age > 1.1) continue;
+    const c = who(tb); ctx.save(); ctx.globalAlpha = 1 - age / 1.1;
+    ctx.translate(c.x + Math.sin(k * 3 + age * 5) * 20 - c.dir * 30, WY + c.y - 60 + age * 90 + Math.sin(k) * 15); ctx.rotate(age * 4 + k);
+    ell(0, 0, 9, 3.2, '#fff'); ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1; ctx.stroke(); ctx.restore();
+  }
+}
+
+// ---------- state ----------
+const clampPad = x => x;
+function chicken(t) {
+  const s = { x: 230, y: 0, dir: 1, ph: 0, amp: 0, mood: 'normal', flap: 0, wet: false, hat: false, sq: 1, rot: 0, t };
+  if (t < 2.6) { s.x = lerp(-80, 230, t / 2.6); s.amp = 1; s.ph = t * 9; s.mood = t > 1.3 ? 'hungry' : 'normal'; }
+  else if (t < 4.1) { s.mood = 'hungry'; }
+  else if (t < 4.6) { const u = seg(t, 4.1, 4.6); s.x = lerp(230, 350, u); s.y = -arc(u) * 70; s.mood = 'angry'; s.flap = 1; }
+  else if (t < 5.0) { s.x = 350; s.y = lerp(0, 46, ease(seg(t, 4.6, 5.0))); s.mood = 'scared'; s.wet = true; s.flap = 1; }
+  else if (t < 6.0) { s.x = 350; s.y = 40 + Math.sin(t * 12) * 5; s.flap = 1; s.mood = 'scared'; s.wet = true; s.hat = t > 5.6; s.rot = Math.sin(t * 15) * 0.15; }
+  else if (t < 7.0) { const u = seg(t, 6, 7); s.x = lerp(350, 270, u); s.y = lerp(40, 0, u); s.wet = true; s.hat = true; s.mood = 'angry'; s.amp = 0.5; s.ph = t * 8; }
+  else if (t < 7.6) { s.x = 270; s.rot = Math.sin(t * 45) * 0.14; s.wet = t < 7.3; s.hat = t < 7.3; s.mood = 'angry'; }
+  else if (t < 8.8) { const u = seg(t, 7.6, 8.8); s.x = lerp(270, 450, u); s.y = -arc(u) * 55 - 14 * (1 - u); s.flap = 1; s.mood = 'angry'; }
+  else if (t < 11.0) { s.x = 450; s.mood = 'angry'; s.y = t < 8.95 ? -6 : 0; if (t > 10.4 && t < 10.9) s.sq = 0.82 + 0.06 * Math.sin((t - 10.4) * 12); }
+  else if (t < 13.2) { s.x = 450; s.mood = 'angry'; if (t < 11.5) { s.sq = 0.88; } }
+  else if (t < 14.0) { const u = seg(t, 13.2, 14.0); s.x = lerp(450, 650, u); s.y = -arc(u) * 110 - 28 * ease(u); s.flap = 1; s.mood = 'angry'; }
+  else if (t < 16.0) { s.x = turtleX(t); s.y = -28; s.mood = 'normal'; }
+  else if (t < 16.6) { s.x = turtleX(t); s.y = -28; s.mood = 'scared'; s.rot = Math.sin(t * 60) * 0.08; s.dir = 1; }
+  else if (t < 17.5) { const u = seg(t, 16.6, 17.5); s.dir = -1; s.x = lerp(700, 230, ease(u)); s.y = lerp(-28, 0, u) - arc(u) * 240; s.flap = 1; s.mood = 'scared'; }
+  else { const u = seg(t, 17.5, 18.5); s.dir = -1; s.x = lerp(230, -140, u); s.amp = 1; s.ph = t * 14; s.flap = 1; s.mood = 'scared'; }
+  return s;
+}
+const turtleX = t => lerp(650, 700, seg(t, 14, 16));
+const turtleDy = t => t < 9 ? 60 : t < 9.4 ? lerp(60, 0, ease(seg(t, 9, 9.4))) : t < 16.6 ? 0 : lerp(0, 60, ease(seg(t, 16.6, 17.2)));
+
+function frog(t) {
+  const s = { x: 450, y: 0, dir: 1, air: 0, sq: 1, rot: 0, mood: 'smug', tongue: 0, tAng: 0, t, shell: false, yolk: 0 };
+  const hop = (a, b, x0, x1, h) => { const u = seg(t, a, b); s.x = lerp(x0, x1, u); s.y = -arc(u) * h; s.air = arc(u); };
+  if (t < 4.0) { s.x = 450; if (t > 2.0 && t < 2.4) { s.tongue = Math.sin(seg(t, 2.0, 2.4) * PI) * 66; s.tAng = -0.45; } if (t > 3.6) s.mood = 'scared'; }
+  else if (t < 4.6) hop(4.0, 4.6, 450, 550, 70);
+  else if (t < 5.6) { s.x = 550; if (t > 5.0 && t < 5.5) { s.tongue = Math.sin(seg(t, 5, 5.5) * PI) * 40; s.tAng = 0.5; } }
+  else if (t < 6.2) hop(5.6, 6.2, 550, 650, 70);
+  else if (t < 9.0) { s.x = 650; if (t > 7 && t < 7.6) { s.tongue = Math.sin(seg(t, 7, 7.6) * PI) * 40; s.tAng = 0.5; } if (t > 8.6) s.mood = 'scared'; }
+  else if (t < 9.4) { s.x = 650; s.y = -34 * ease(seg(t, 9, 9.4)); s.mood = 'scared'; }
+  else if (t < 10.4) { const u = seg(t, 9.4, 10.4); s.x = lerp(650, 455, u); s.y = lerp(-34, -122, u) - arc(u) * 230; s.air = arc(u); s.mood = 'scared'; s.rot = -u * PI * 2; }
+  else if (t < 10.9) { s.x = 455; s.y = -122; s.sq = 0.78; s.mood = 'scared'; }
+  else if (t < 11.3) { const u = seg(t, 10.9, 11.3); s.x = lerp(455, 550, u); s.y = lerp(-122, 0, u) - arc(u) * 50; s.air = arc(u); s.mood = 'scared'; }
+  else if (t < 11.6) { s.x = 550; s.mood = 'scared'; }
+  else if (t < 12.1) { const u = seg(t, 11.6, 12.1); s.x = 550; s.yolk = 1; s.y = lerp(0, 38, ease(u)); s.rot = u * PI; s.mood = 'scared'; }
+  else if (t < 12.6) { s.x = 550; s.y = 38 + Math.sin(t * 6) * 3; s.rot = PI; s.yolk = 1; s.mood = 'sad'; }
+  else if (t < 13.1) { const u = seg(t, 12.6, 13.1); s.x = 550; s.y = lerp(38, 0, u) - arc(u) * 50; s.rot = PI + u * PI; s.yolk = 0.8; s.shell = true; s.air = arc(u); }
+  else if (t < 15.8) { s.x = 550; s.shell = true; s.yolk = 0.6; if (t > 13.2 && t < 14.0) { s.tongue = 22 + Math.sin(t * 20) * 8; s.tAng = 0.9; } }
+  else if (t < 17.5) { s.x = 550; s.shell = true; s.yolk = 0.5; s.mood = 'scared'; }
+  else if (t < 19.0) { s.x = 550; s.shell = true; s.yolk = 0.4; s.mood = 'smug'; }
+  else if (t < 19.8) { const u = seg(t, 19.0, 19.8); s.x = lerp(550, 660, u); s.y = lerp(0, -78, u) - arc(u) * 90; s.air = arc(u); s.shell = true; }
+  else { s.x = 660; s.y = -78; s.shell = true; s.yolk = 0.3; s.sq = 1 + (t < 20 ? -0.15 * Math.sin((t - 19.8) * 15) : 0);
+    if (t > 21.0 && t < 21.5) { s.tongue = Math.sin(seg(t, 21, 21.5) * PI) * 90; s.tAng = -0.35; s.dir = 1; } else s.mood = 'smug'; if (t > 21.5) s.mood = 'sad'; }
+  return s;
+}
+function bullfrog(t) {
+  if (t < 15.8) return null;
+  const s = { x: 760, y: 10, dir: -1, sc: 3.3, col: '#3f8f3a', dark: '#2f7a2c', belly: '#d9eaa0', t, mood: 'smug', mouth: 0, tongue: 0 };
+  s.y = lerp(180, 10, ease(seg(t, 15.8, 16.6)));
+  if (t >= 16.1 && t < 17.0) { s.mouth = 0.5 + 0.5 * Math.abs(Math.sin(t * 14)); s.mood = 'scared'; }
+  if (t >= 18.0) s.x = lerp(760, 660, ease(seg(t, 18, 18.9)));
+  s.y += Math.sin(t * 2.4) * 2;
+  if (t > 21.0 && t < 21.6) { s.tongue = Math.sin(seg(t, 21, 21.6) * PI) * 40; s.tAng = 0.3; s.mouth = 0.4; }
+  return s;
+}
+
+const CAPTIONS = [
+  [0.0, 2.6, 'Ayam lapar berat sedang jalan-jalan...'],
+  [2.6, 4.0, 'Matanya tertuju pada seekor katak!'],
+  [4.0, 4.6, 'Katak: "Tangkap kalau bisa."'],
+  [4.6, 6.0, 'Ayam lompat ke daun teratai... tenggelam.'],
+  [6.0, 8.8, 'Ayam mencoba terbang. Hasilnya: meluncur.'],
+  [8.8, 10.4, 'Tiba-tiba lantai katak naik: kura-kura!'],
+  [10.4, 11.0, 'Katak mendarat tepat di kepala ayam.'],
+  [11.0, 12.6, 'Ayam marah dan bertelur. Telurnya jadi peluru!'],
+  [12.6, 13.4, 'Katak: "Hmm, enak juga."'],
+  [13.4, 15.8, 'Ayam nekat naik kura-kura...'],
+  [15.8, 17.4, '...lalu muncul KAKAKNYA si katak.'],
+  [17.4, 19.0, 'Ayam kabur sampai ujung kampung.'],
+  [19.0, 22.4, 'Katak kecil punya kakak yang besar.'],
+];
+function caption(t) {
+  for (const [a, b, s] of CAPTIONS) if (t >= a && t < b) {
+    const al = Math.min(clamp((t - a) / 0.15, 0, 1), clamp((b - t) / 0.15, 0, 1));
+    ctx.save(); ctx.globalAlpha = al; ctx.font = '800 26px "DejaVu Sans",Arial,sans-serif';
+    const w = ctx.measureText(s).width + 50;
+    rrect(W / 2 - w / 2, H - 56, w, 42, 21, 'rgba(0,0,0,.62)'); text(s, W / 2, H - 35, 26, '#fff', null); ctx.restore();
+  }
+}
+
+// ---------- render ----------
+function render(t) {
+  const K = 1280 / W, Z = 1.25;
+  ctx.setTransform(K * Z, 0, 0, K * Z, K * (480 - 480 * Z), K * (380 - WY * Z));
+  background(t);
+
+  // pads
+  const padAlive = i => (i === 0 ? (t < 4.6 || t > 8.0) : i === 3 ? t < 9.0 : true);
+  for (let i = 0; i < 4; i++) {
+    if (!padAlive(i)) continue;
+    let dy = Math.sin(t * 1.8 + i) * 1.5;
+    if (i === 0 && t >= 4.6 && t < 5) dy += 30 * seg(t, 4.6, 5);
+    if (i === 0 && t > 8.0) dy += (1 - seg(t, 8.0, 8.4)) * 18;
+    if (i === 1 && t > 8.8 && t < 9.4) dy += 7 * arc(seg(t, 8.8, 9.4));
+    if (i === 2 && t > 11.6 && t < 12.2) dy += 6 * arc(seg(t, 11.6, 12.2));
+    drawPad(PADS[i], dy, i === 2);
+  }
+  const td = turtleDy(t);
+  if (td < 59) drawTurtle(turtleX(t), td);
+
+  const ch = chicken(t), fr = frog(t), bf = bullfrog(t);
+  // growl waves
+  if (t > 1.4 && t < 2.5) for (let i = 0; i < 3; i++) { const a = ((t * 2 + i / 3) % 1); ctx.save(); ctx.globalAlpha = 1 - a; ctx.strokeStyle = '#ff7a3a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(ch.x, WY - 55, 40 + a * 40, -0.6, 0.6); ctx.stroke(); ctx.beginPath(); ctx.arc(ch.x, WY - 55, 40 + a * 40, PI - 0.6, PI + 0.6); ctx.stroke(); ctx.restore(); }
+  // fly
+  if (t < 2.35) { const fx = 450 + 64 + Math.cos(t * 9) * 8, fy = WY - 52 + Math.sin(t * 11) * 8; circ(fx, fy, 3.5, '#222'); ell(fx - 3, fy - 5, 5, 2.5, 'rgba(200,230,255,.8)', -0.5); ell(fx + 3, fy - 5, 5, 2.5, 'rgba(200,230,255,.8)', 0.5); }
+  if (bf) drawFrog(bf);
+  if (ch.x > -120) drawChicken(ch);
+  drawFrog(fr);
+
+  // egg flight
+  if (t >= 11.1 && t < 11.6) { const u = seg(t, 11.1, 11.6); drawEgg(lerp(500, 565, u), WY - 40 - arc(u) * 55, u * 10); }
+  if (t >= 11.6 && t < 12.6) { // shell fragments
+    const a = t - 11.6; ctx.save(); ctx.globalAlpha = 1 - a;
+    for (let i = 0; i < 6; i++) { ctx.save(); ctx.translate(560 + (i - 2.5) * 30 * a, WY - 40 - (150 - i * 14) * a + 400 * a * a); ctx.rotate(a * (i + 3)); poly([[-6, 4], [0, -6], [7, 3]], '#fff'); ctx.restore(); }
+    ctx.restore();
+  }
+  feathers(t, 7.6, 8.8, chicken); feathers(t, 16.6, 18.5, chicken);
+
+  pondFront(t);
+  splash(t, 4.6, 350, 1.1); splash(t, 11.7, 550, 1.0); splash(t, 9.0, 650, 0.6); splash(t, 16.6, 700, 0.5); splash(t, 8.0, 350, 0.4);
+  // droplets while shaking
+  if (t > 7.0 && t < 7.4) for (let i = 0; i < 6; i++) { const a = (t - 7.0) * 2.5 + i * 0.1; circ(270 + Math.sin(i * 7 + t * 30) * 50, WY - 60 + (i % 3) * 20 + a * 15, 3.5, '#bfe9ff'); }
+  // bubbles under water
+  if ((t > 5.0 && t < 6.0) || (t > 11.8 && t < 12.6)) for (let i = 0; i < 4; i++) { const a = (t * 1.8 + i / 4) % 1; circ((t < 7 ? 350 : 550) + Math.sin(i * 5 + a * 8) * 14, WY + 30 - a * 40, 3 + i, 'rgba(255,255,255,.75)'); }
+  // sweat on scared frog
+  if (fr.mood === 'scared') for (let i = 0; i < 2; i++) { const a = ((t * 2.2 + i * 0.5) % 1); sweat(fr.x + 24 + i * 14, WY + fr.y - 66 - 12 + a * 30, 0.8); }
+  // stars on dizzy chicken: after landing in water
+  if (t > 4.7 && t < 5.4) for (let i = 0; i < 3; i++) { const a = t * 6 + i * 2.09; ctx.save(); ctx.translate(ch.x + 30 + Math.cos(a) * 28, WY - 135 + Math.sin(a) * 8); ctx.rotate(a); text('*', 0, 0, 26, '#ffd93b', '#b8860b', 3); ctx.restore(); }
+  // question mark on confused chicken
+  if (t > 14.3 && t < 15.6) text('?', ch.x + 40, WY + ch.y - 150 + Math.sin(t * 6) * 4, 46, '#fff', '#222', 7);
+  // hearts for the brothers
+  if (t > 20.0 && t < 21.0) for (let i = 0; i < 3; i++) { const a = ((t * 0.9 + i / 3) % 1); ctx.save(); ctx.globalAlpha = 1 - a; heart(660 + Math.sin(i * 2 + t * 3) * 30, WY - 220 - a * 50, 1.2 - a * 0.3, '#ff4d6d'); ctx.restore(); }
+  // fly #2 (final gag)
+  if (t > 20.2 && t < 21.4) { const fx = 740 + Math.cos(t * 9) * 12 - seg(t, 20.2, 21) * 60, fy = WY - 120 + Math.sin(t * 11) * 10; circ(fx, fy, 4, '#222'); ell(fx - 3, fy - 6, 6, 3, 'rgba(200,230,255,.8)', -0.5); ell(fx + 3, fy - 6, 6, 3, 'rgba(200,230,255,.8)', 0.5); }
+
+  // sfx text
+  pop('KRUUUUUK!', t, 1.5, 1.2, 300, 270, '#ffb347', 56);
+  pop('BYURRR!', t, 4.6, 1.1, 350, 270, '#9be8ff', 66, 0.08);
+  pop('BOING!', t, 9.4, 1.0, 560, 200, '#7dff9a', 70, 0.1);
+  pop('TOK!', t, 10.4, 0.8, 455, 190, '#ffd93b', 56);
+  pop('POK!', t, 11.1, 0.7, 500, 290, '#fff', 48);
+  pop('PLAK!', t, 11.6, 1.0, 560, 220, '#ffd93b', 70);
+  pop('BYURRR!', t, 11.8, 1.0, 500, 330, '#9be8ff', 56, 0.1);
+  pop('KROAAAK!!', t, 16.1, 1.5, 520, 215, '#ff6b35', 84);
+  pop('HAP!', t, 21.0, 0.9, 640, 235, '#fff', 62);
+
+  // dialogue
+  bubble('Wah... makan siang!', t, 2.7, 3.9, 260, 250, 270, 330);
+  bubble('Glek...', t, 3.6, 4.3, 450, 320, 450, 400);
+  bubble('Nih, kalau bisa~', t, 4.9, 5.8, 600, 330, 565, 390);
+  bubble('Blub... blub...', t, 5.1, 6.0, 330, 320, 345, 420);
+  bubble('Eh?! Lantainya naik!', t, 9.15, 10.0, 660, 240, 650, 380);
+  bubble('Hmm... telurnya\nenak juga.', t, 13.1, 14.3, 520, 300, 550, 380);
+  bubble('Kok aku\npindah...?', t, 14.3, 15.6, 620, 230, 660, 340);
+  bubble('Siapa yang ganggu\nadikku?', t, 17.0, 18.5, 620, 190, 690, 270);
+  bubble('Makasih, Kak!', t, 19.9, 20.8, 540, 250, 650, 360);
+  bubble('Aduh! Lalatku...', t, 21.55, 22.4, 500, 250, 660, 360);
+
+  ctx.setTransform(K, 0, 0, K, 0, 0);
+  caption(t);
+
+  if (t > 22.4) {
+    const a = ease((t - 22.4) / 0.8);
+    ctx.fillStyle = `rgba(20,30,40,${0.78 * a})`; ctx.fillRect(0, 0, W, H);
+    ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, H / 2 - 20); ctx.scale(lerp(0.6, 1, a), lerp(0.6, 1, a));
+    text('TAMAT', 0, -30, 110, '#7dff9a', '#222', 14);
+    text('Ayam 0  -  Katak 1', 0, 60, 40, '#fff', '#222', 7);
+    text('(kakaknya ikut menang)', 0, 108, 24, '#cfe8ff', null);
+    ctx.restore();
+  }
+}
+window.render = render; window.DURATION = DUR; window.EVENTS = {};
+if (!window.__RENDER_ONLY) { let st = performance.now(); (function loop() { render(((performance.now() - st) / 1000) % DUR); requestAnimationFrame(loop); })(); }
+</script>
+</body>
+</html>
