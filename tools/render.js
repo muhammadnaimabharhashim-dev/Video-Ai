@@ -10,6 +10,7 @@ const path = require('path'), fs = require('fs');
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   await page.addInitScript(() => { window.__RENDER_ONLY = true; });
+  if (process.env.MOUTH_JSON) { const mj = JSON.parse(fs.readFileSync(process.env.MOUTH_JSON, 'utf8')); await page.addInitScript(m => { window.MOUTH = m; }, mj); }
   page.on('pageerror', e => { console.error('PAGE ERROR', e.message); process.exit(1); });
   await page.goto('file://' + path.resolve(__dirname, '..', html));
   const dur = await page.evaluate(() => window.DURATION);
