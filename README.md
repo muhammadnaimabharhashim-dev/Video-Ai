@@ -24,3 +24,14 @@ node tools/render.js frames 30 - animation/ayam-katak.html
 python3 tools/audio_ayam.py audio.wav
 ffmpeg -framerate 30 -i frames/f%05d.png -i audio.wav -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest output/ayam-vs-katak.mp4
 ```
+
+## Video 3: Panda Main Skateboard
+
+- `output/panda-skateboard.mp4` – hasil akhir (25 detik)
+- `animation/panda-skate.html` – animasinya; `tools/audio_panda.py` – musik/SFX-nya
+
+```
+node tools/render.js frames 30 - animation/panda-skate.html
+python3 tools/audio_panda.py audio.wav
+ffmpeg -framerate 30 -i frames/f%05d.png -i audio.wav -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest output/panda-skateboard.mp4
+```
