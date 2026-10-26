@@ -1,0 +1,23 @@
+{
+  "name": "video-ai",
+  "version": "1.0.0",
+  "description": "Video animasi kartun lucu (25 detik, 1280x720, 30fps, dengan musik & efek suara).",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/muhammadnaimabharhashim-dev/Video-Ai.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/muhammadnaimabharhashim-dev/Video-Ai/issues"
+  },
+  "homepage": "https://github.com/muhammadnaimabharhashim-dev/Video-Ai#readme",
+  "dependencies": {
+    "three": "^0.160.0"
+  }
+}
