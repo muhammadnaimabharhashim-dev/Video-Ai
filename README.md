@@ -55,3 +55,18 @@ SUB=2 node tools/render3d.js frames 24 - cinematic/index.html          # ~35 min
 python3 tools/audio_cinematic.py frames/events.json audio.wav          # perlu numpy, scipy
 ffmpeg -framerate 24 -i frames/f%05d.png -i audio.wav -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest output/kejar-sinematik.mp4
 ```
+
+## Video 6: Pak Mat dan Ayam (versi 3D sinematik)
+
+Versi 3D bagi cerita Pak Mat: halaman kampung (rumah kayu atas tiang, pokok durian, reban, pagar buluh, pokok kelapa dan pisang, ampaian), watak lelaki prosedur (kain pelikat, baju Melayu, songkok) dengan gerak mulut mengikut suara TTS luar talian, serta ayam berbulu. Masih grafik komputer, bukan video AI fotorealistik.
+
+- `output/pak-mat-sinematik.mp4` – hasil akhir (39 saat, 1280x720, 24fps)
+- `cinematic/pakmat.html`, `pakmat.js` (cerita, kamera), `human.js`, `chicken.js`, `yard.js`
+- `tools/audio_pakmat3d.py` – suara, ambien, muzik, foley; hasilkan juga `mouth.json`
+
+```
+npm install
+python3 tools/audio_pakmat3d.py events.json audio.wav mouth.json     # events.json: dari render3d (halaman menghasilkannya)
+MOUTH_JSON=mouth.json node tools/render3d.js frames 24 - cinematic/pakmat.html          # ~60 min pada 4 teras
+ffmpeg -framerate 24 -i frames/f%05d.png -i audio.wav -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest output/pak-mat-sinematik.mp4
+```

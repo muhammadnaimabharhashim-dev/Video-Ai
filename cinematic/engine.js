@@ -15,7 +15,7 @@ renderer.toneMapping = THREE.NoToneMapping;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(35, W / H, 0.05, 400);
-const sunDir = new THREE.Vector3(-0.55, 0.52, -0.65).normalize();   // direction TO the sun (low, behind the action)
+const sunDir = (window.SUNDIR ? new THREE.Vector3(...window.SUNDIR) : new THREE.Vector3(-0.55, 0.52, -0.65)).normalize();   // direction TO the sun (low, behind the action)
 
 // ---------- procedural sky ----------
 const skyMat = new THREE.ShaderMaterial({
@@ -72,7 +72,7 @@ const post = {
     vec2 uv = vUv; vec2 px = 1.0/res;
     float z0 = lin(texture2D(tDepth, uv).r); float c0 = coc(z0);
     vec3 acc = texture2D(tColor, uv).rgb; float wsum = 1.0; vec3 glow = vec3(0.0);
-    const int N = 40; float ga = 2.39996;
+    const int N = 28; float ga = 2.39996;
     for (int i=1; i<=N; i++) {
       float r = sqrt(float(i)/float(N)); float a = float(i)*ga;
       vec2 o = vec2(cos(a), sin(a)) * r;
@@ -87,7 +87,7 @@ const post = {
     vec3 b = vec3(0.0); for (int i=0;i<8;i++){ float a=float(i)*0.785; b += texture2D(tColor, uv + vec2(cos(a),sin(a))*px*22.0).rgb; } col += max(b/8.0 - 1.0, 0.0) * 0.35;
     // chromatic aberration (edges)
     vec2 d = (uv-0.5); float ca = dot(d,d)*2.2;
-    col.r = mix(col.r, texture2D(tColor, uv + d*0.004*ca*8.0).r, 0.5); col.b = mix(col.b, texture2D(tColor, uv - d*0.004*ca*8.0).b, 0.5);
+    col.r = mix(col.r, texture2D(tColor, uv + d*0.0016*ca*8.0).r, 0.5); col.b = mix(col.b, texture2D(tColor, uv - d*0.0016*ca*8.0).b, 0.5);
     col += flash;
     col = aces(col * 0.95);
     // teal/orange grade
