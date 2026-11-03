@@ -29,7 +29,7 @@ const skyMat = new THREE.ShaderMaterial({
   float fbm(vec2 p){ float a=.5, s=0.; for(int i=0;i<5;i++){ s+=a*n(p); p*=2.03; a*=.5; } return s; }
   void main(){
     vec3 d = normalize(vDir); float el = clamp(d.y, -0.2, 1.0);
-    vec3 zen = vec3(0.16,0.36,0.72), mid = vec3(0.55,0.72,0.92), hor = vec3(1.0,0.78,0.52);
+    vec3 zen = vec3(0.10,0.30,0.66), mid = vec3(0.46,0.67,0.90), hor = vec3(1.0,0.80,0.58);
     vec3 col = mix(hor, mid, smoothstep(0.0, 0.25, el)); col = mix(col, zen, smoothstep(0.2, 0.8, el));
     float sd = max(dot(d, normalize(sunDir)), 0.0);
     col += vec3(1.0,0.62,0.30) * pow(sd, 6.0) * 0.55 + vec3(1.0,0.85,0.6) * pow(sd, 64.0) * 1.6;
@@ -53,17 +53,17 @@ sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.
 sun.shadow.camera.near = 1; sun.shadow.camera.far = 90;
 { const c = sun.shadow.camera; c.left = -9; c.right = 9; c.top = 9; c.bottom = -9; }
 scene.add(sun); scene.add(sun.target);
-scene.add(new THREE.HemisphereLight(0x9fc4ee, 0x7a5a3a, 0.55));
+const hemi = new THREE.HemisphereLight(0x9fc4ee, 0x7a5a3a, 0.55); scene.add(hemi);
 function aimSun(cx, cz) { sun.target.position.set(cx, 0, cz); sun.position.set(cx, 0, cz).addScaledVector(sunDir, 45); sun.target.updateMatrixWorld(); }
 
 // ---------- post pass ----------
 const rt = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, samples: 4, depthTexture: new THREE.DepthTexture(W, H) });
 const post = {
   uniforms: { tColor: { value: rt.texture }, tDepth: { value: rt.depthTexture }, res: { value: new THREE.Vector2(W, H) }, near: { value: camera.near }, far: { value: camera.far },
-    focus: { value: 6 }, aperture: { value: 0.35 }, time: { value: 0 }, fade: { value: 0 }, flash: { value: 0 }, grain: { value: 0.045 }, bars: { value: 0.118 } },
+    focus: { value: 6 }, aperture: { value: 0.35 }, time: { value: 0 }, fade: { value: 0 }, flash: { value: 0 }, grain: { value: 0.045 }, bars: { value: 0.118 }, expo: { value: 0.95 }, sat: { value: 1.08 }, contrast: { value: 0.35 }, vig: { value: 1.25 } },
   vs: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
   fs: `
-  varying vec2 vUv; uniform sampler2D tColor, tDepth; uniform vec2 res; uniform float near, far, focus, aperture, time, fade, flash, grain, bars;
+  varying vec2 vUv; uniform sampler2D tColor, tDepth; uniform vec2 res; uniform float near, far, focus, aperture, time, fade, flash, grain, bars, expo, sat, contrast, vig;
   float lin(float d){ float z = d*2.0-1.0; return 2.0*near*far/(far+near - z*(far-near)); }
   float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)) + time*7.31)*43758.5453); }
   vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
@@ -89,13 +89,13 @@ const post = {
     vec2 d = (uv-0.5); float ca = dot(d,d)*2.2;
     col.r = mix(col.r, texture2D(tColor, uv + d*0.0016*ca*8.0).r, 0.5); col.b = mix(col.b, texture2D(tColor, uv - d*0.0016*ca*8.0).b, 0.5);
     col += flash;
-    col = aces(col * 0.95);
+    col = aces(col * expo);
     // teal/orange grade
     float l = dot(col, vec3(0.299,0.587,0.114));
     col = mix(col, col * vec3(0.92,1.0,1.08), (1.0-l)*0.5); col = mix(col, col * vec3(1.08,1.0,0.88), l*0.5);
-    col = mix(vec3(l), col, 1.08); col = pow(col, vec3(1.0/2.2));
-    col = col*col*(3.0-2.0*col)*0.35 + col*0.65;                     // gentle filmic contrast
-    float v = 1.0 - dot(d,d)*1.25; col *= clamp(v, 0.0, 1.0)*0.5+0.5;
+    col = mix(vec3(l), col, sat); col = pow(col, vec3(1.0/2.2));
+    col = col*col*(3.0-2.0*col)*contrast + col*(1.0-contrast);                     // gentle filmic contrast
+    float v = 1.0 - dot(d,d)*vig; col *= clamp(v, 0.0, 1.0)*0.5+0.5;
     col += (hash(uv*res) - 0.5) * grain;
     float bar = step(bars, uv.y) * step(uv.y, 1.0-bars);
     col *= bar; col *= (1.0 - fade);

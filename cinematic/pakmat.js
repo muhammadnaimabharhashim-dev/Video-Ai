@@ -5,10 +5,10 @@ const LINES = [[1.0, 7.35], [9.0, 3.84], [14.0, 3.34], [19.4, 5.01], [25.0, 7.05
 const mouthAt = T => window.MOUTH ? (window.MOUTH[Math.round(T * 30)] || 0) : (LINES.some(l => T >= l[0] && T < l[0] + l[1]) ? 0.25 + 0.75 * Math.abs(Math.sin(T * 17)) : 0);
 
 // ---------- scene ----------
-scene.fog.density = 0.0055; FUR_GLOBAL.fogD.value = 0.0055;
+scene.fog.density = 0.0042; FUR_GLOBAL.fogD.value = 0.0042;
 sun.shadow.mapSize.set(2048, 2048); { const c = sun.shadow.camera; c.left = -17; c.right = 17; c.top = 17; c.bottom = -17; c.far = 120; c.updateProjectionMatrix(); }
-sun.intensity = 3.0;
-const fill = new THREE.DirectionalLight(0xffe6cc, 0.9); fill.position.set(3, 4, 14); scene.add(fill);
+sun.intensity = 3.3; hemi.intensity = 0.34; scene.environmentIntensity = 0.7; scene.fog.color.set(0xe3cba8); FUR_GLOBAL.fogCol.value.set(0xe3cba8);
+const fill = new THREE.DirectionalLight(0xffe6cc, 0.55); fill.position.set(3, 4, 14); scene.add(fill);
 const yardW = buildYard(scene);
 aimSun(0, -1);
 const man = makeMan(); scene.add(man.root);
@@ -122,23 +122,25 @@ const v3 = (x, y, z) => new THREE.Vector3(x, y, z);
 function cameraAt(T, mp, hp) {
   const head = man.head.localToWorld(v3(0, 0.1, 0)), chest = head.clone().add(v3(0, -0.2, 0)), henPos = v3(hp.x, 0.3 + hp.y, hp.z);
   const mx = mp.x, mz = mp.z;
-  if (T < 1.0) cam(v3(lerp(3.5, 3.0, T), lerp(2.4, 2.2, T), lerp(9.5, 9.0, T)), v3(-1.2, 1.5, 0), 34, 9.5, 0.2, 0.01, T);
-  else if (T < 5.0) { const u = (T - 1) / 4; cam(v3(lerp(1.2, 0.8, u), 1.55, lerp(3.4, 2.8, u)), head.clone().add(v3(0, -0.06, 0)), 30, undefined, 0.3, 0.004, T); }
-  else if (T < 6.4) cam(v3(5.6, 0.95, 2.6), v3(7.6, 0.95, 0.15), 27, 3.4, 0.55, 0.004, T);
-  else if (T < 8.5) cam(v3(-3.6, 1.5, 3.4), head.clone().add(v3(0.1, -0.05, 0)), 30, undefined, 0.3, 0.004, T);
-  else if (T < 10.6) cam(v3(1.2, 0.75, 8.2), v3(lerp(1.0, -1.5, ease(seg(T, 8.7, 10.6))), 0.95, 1.0), 33, 7.2, 0.25, 0.008, T);
-  else if (T < T_TRIP) cam(v3(mx + 0.3, 1.0, 5.6), v3(mx + 0.7, 0.9, 0.8), 34, 5.0, 0.3, 0.012, T);
-  else if (T < 14.0) cam(v3(-6.6, 0.32, 2.9), v3(-4.2, 0.35, 0.7), 32, 3.2, 0.5, 0.004, T);
-  else if (T < 17.4) cam(v3(-0.3, 1.35, 7.4), v3(-3.9, 1.0, 0.8), 32, 8.0, 0.22, 0.004, T);
-  else if (T < 18.5) cam(v3(mx - 1.4, 1.25, 4.6), v3(mx + 0.8, 1.35, -0.2), 33, 4.8, 0.3, 0.006, T);
-  else if (T < 19.7) cam(v3(5.2, 1.0, 3.6), v3(2.7, 2.1, -0.4), 36, 4.2, 0.3, T > T_BONK && T < T_BONK + 0.4 ? 0.02 : 0.004, T);
-  else if (T < 23.4) cam(v3(mx + 0.6, 1.6, mz + 2.1), head.clone().add(v3(0, -0.05, 0)), 30, undefined, 0.3, 0.004, T);
-  else if (T < 25.0) cam(v3(mx + 0.9, 1.5, mz + 2.1), chest.clone().add(v3(0, 0.1, 0)), 30, undefined, 0.35, 0.004, T);
-  else if (T < 27.6) cam(v3(1.5, 1.35, 5.2), v3(3.2, 0.9, 0.4), 34, 5.2, 0.28, 0.006, T);
-  else if (T < 30.0) cam(v3(2.6, 0.38, 3.0), v3(3.7, 0.2, 0.9), 27, 3.4, 0.55, 0.002, T);
-  else if (T < 32.6) cam(v3(2.3, 0.55, 2.7), v3(HEN_X - 0.2, 0.35, 0.9), 28, 2.4, 0.5, 0.004, T);
-  else if (T < 36.0) { const u = (T - 32.6) / 3.4; cam(v3(mx + 0.5, 1.55, mz + lerp(2.5, 2.2, u)), head.clone().add(v3(0, 0.2, 0)), 30, undefined, 0.3, 0.003, T); }
-  else { const u = seg(T, 36.0, 38.9); cam(v3(lerp(1.0, 0.0, u), lerp(1.4, 2.0, u), lerp(6.0, 8.4, u)), v3(3.0, 0.9, 0.4), 34, undefined, 0.25, 0.006, T); }
+  // framing helper: camera at pos, aimed at subject+offset (lead room), focus locked on the subject
+  const cs = (pos, subj, off, fov, ap, sh) => cam(pos, subj.clone().add(off), fov, pos.distanceTo(subj), ap, sh, T);
+  if (T < 1.0) cam(v3(lerp(4.5, 3.9, T), lerp(2.2, 2.0, T), lerp(10.5, 9.8, T)), v3(-1.2, 1.6, 0), 28, 11, 0.25, 0.01, T);
+  else if (T < 5.0) { const u = (T - 1) / 4; cs(v3(lerp(0.9, 0.4, u), 1.56, lerp(4.9, 4.1, u)), head, v3(0.55, -0.06, 0), 24, 0.55, 0.003); }
+  else if (T < 6.4) cs(v3(5.2, 0.92, 3.6), v3(7.6, 0.95, 0.15), v3(0, 0, 0), 24, 0.7, 0.004);
+  else if (T < 8.5) cs(v3(-3.4, 1.5, 4.2), head, v3(0.4, -0.05, 0), 24, 0.55, 0.003);
+  else if (T < 10.6) cam(v3(2.0, 0.72, 9.6), v3(lerp(1.5, -1.5, ease(seg(T, 8.7, 10.6))), 0.95, 1.0), 26, 9.0, 0.3, 0.008, T);
+  else if (T < T_TRIP) cam(v3(mx + 0.5, 0.95, 6.8), v3(mx + 0.9, 0.9, 0.8), 26, 6.2, 0.45, 0.012, T);
+  else if (T < 14.0) cam(v3(-6.8, 0.3, 3.4), v3(-4.2, 0.35, 0.7), 26, 3.6, 0.55, 0.004, T);
+  else if (T < 17.4) cam(v3(0.2, 1.3, 8.8), v3(-3.9, 1.0, 0.9), 26, 9.2, 0.26, 0.004, T);
+  else if (T < 18.5) cam(v3(mx - 2.0, 1.2, 5.6), v3(mx + 0.8, 1.4, -0.2), 28, 5.9, 0.3, 0.006, T);
+  else if (T < 19.7) cam(v3(5.8, 1.0, 4.6), v3(2.7, 2.0, -0.4), 30, 5.0, 0.3, T > T_BONK && T < T_BONK + 0.4 ? 0.02 : 0.004, T);
+  else if (T < 23.4) cs(v3(mx + 1.1, 1.55, mz + 3.8), head, v3(-0.35, -0.05, 0), 24, 0.55, 0.003);
+  else if (T < 25.0) cs(v3(mx + 1.5, 1.42, mz + 3.9), chest, v3(-0.3, 0.15, 0), 25, 0.5, 0.003);
+  else if (T < 27.6) cam(v3(1.2, 1.3, 6.6), v3(3.2, 0.9, 0.4), 26, 6.6, 0.3, 0.006, T);
+  else if (T < 30.0) cs(v3(2.4, 0.34, 3.4), v3(3.7, 0.2, 0.9), v3(0, 0, 0), 24, 0.7, 0.002);
+  else if (T < 32.6) cs(v3(1.9, 0.55, 3.5), henPos, v3(0, 0, 0), 26, 0.55, 0.004);
+  else if (T < 36.0) { const u = (T - 32.6) / 3.4; cs(v3(mx + 1.0, 1.58, mz + lerp(3.2, 2.8, u)), head, v3(-0.3, 0.2, 0), 24, 0.45, 0.003); }
+  else { const u = seg(T, 36.0, 38.9); cam(v3(lerp(1.4, 0.2, u), lerp(1.4, 2.0, u), lerp(6.6, 8.8, u)), v3(3.0, 0.9, 0.4), 28, lerp(6.6, 8.8, u), 0.25, 0.006, T); }
 }
 
 // ---------- per frame ----------
@@ -146,7 +148,7 @@ const SUN_OFF = v3(0, 0, 0);
 function setup(T) {
   const m = smoothedPose(manPose, T, true), h = smoothedPose(henPose, T, false), mp = m.p, hp = h.p;
   // man
-  man.root.position.set(mp.x, m.y, mp.z); man.root.rotation.set(m.rotX, mp.yaw, 0); man.pose(m.P);
+  man.root.position.set(mp.x, m.y, mp.z); man.root.rotation.set(m.rotX, mp.yaw, 0); man.pose(Object.assign(m.P, { t: T }));
   // hen
   hen.root.position.set(hp.x, h.y, hp.z); hen.root.rotation.set(0, hp.yaw, 0); hen.pose(h.P);
   scene.updateMatrixWorld(true);
@@ -182,8 +184,12 @@ function setup(T) {
   yardW.laundry.forEach((l, i) => { l.rotation.x = Math.sin(T * 1.3 + i) * 0.07; l.rotation.z = Math.sin(T * 0.9 + i * 2) * 0.05; });
   FUR_GLOBAL.camPos.value.copy(camera.position); FUR_GLOBAL.time.value = T; skyMat.uniforms.time.value = T; yardW.grassMat.forEach(g => { if (g.userData.sh) g.userData.sh.uniforms.uT.value = T; });
   cameraAt(T, mp, hp);
+  yardW.rays.forEach((r, i) => { r.material.opacity = 0.06 + 0.035 * Math.sin(T * 0.5 + i * 1.7); });
+  const fgOn = (T > 1.5 && T < 5.0) || (T > 6.6 && T < 8.4) || (T > 19.8 && T < 23.3) || (T > 32.8 && T < 35.9);
+  yardW.fg.visible = fgOn; if (fgOn) { const dir = camera.getWorldDirection(v3(0, 0, 0)), right = v3().crossVectors(dir, v3(0, 1, 0)).normalize(), up = v3().crossVectors(right, dir).normalize(); const side = (T > 19.8 && T < 23.3) ? -1 : 1;
+    yardW.fg.position.copy(camera.position).addScaledVector(dir, 1.1).addScaledVector(right, side * 0.75).addScaledVector(up, 0.42); yardW.fg.quaternion.copy(camera.quaternion); yardW.fg.rotateZ(side * 0.5); yardW.fg.rotateX(-0.3); }
   FUR_GLOBAL.camPos.value.copy(camera.position);
-  post.uniforms.fade.value = Math.max(1 - sstep(0, 0.7, T), sstep(DURATION - 1.5, DURATION - 0.1, T)); post.uniforms.time.value = T % 7.3; post.uniforms.bars.value = 0.1;
+  post.uniforms.fade.value = Math.max(1 - sstep(0, 0.7, T), sstep(DURATION - 1.5, DURATION - 0.1, T)); post.uniforms.time.value = T % 7.3; post.uniforms.bars.value = 0.1; post.uniforms.expo.value = 0.9; post.uniforms.sat.value = 0.97; post.uniforms.contrast.value = 0.5; post.uniforms.vig.value = 1.4;
 }
 const henPath2 = T => ({ p: henPath(T) }), manPath2 = T => ({ p: manPath(T) });
 window.OVERLAY = (ctx2, T) => { const a = sstep(DURATION - 2.4, DURATION - 1.5, T) * (1 - sstep(DURATION - 0.35, DURATION - 0.05, T)); if (a <= 0) return;

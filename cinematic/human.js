@@ -28,10 +28,10 @@ function makeEyeHuman(R, irisCols) {
 
 function makeMan() {
   const M = { root: new THREE.Group() }; M.root.rotation.order = 'YXZ';
-  const skinTex = noiseTex(256, '#b67a52', ['#a86a44', '#c48a60', '#b0744c'], 5000, 41, [2, 2]);
-  const skin = new THREE.MeshStandardMaterial({ color: 0xffffff, map: skinTex, bumpMap: skinTex, bumpScale: 0.6, roughness: 0.58, emissive: 0x1a0a06, emissiveIntensity: 0.35 });
+  const skinTex = noiseTex(256, '#b07852', ['#a56e4a', '#bb8260', '#ab7450'], 3500, 41, [3, 3]);
+  const skin = new THREE.MeshStandardMaterial({ color: 0xffffff, map: skinTex, bumpMap: skinTex, bumpScale: 0.35, roughness: 0.52, emissive: 0x1a0a06, emissiveIntensity: 0.3 });
   const clothTex = (base, line, rep) => texCanvas(256, (x, s) => { x.fillStyle = base; x.fillRect(0, 0, s, s); for (let i = 0; i < s; i += 3) { x.fillStyle = 'rgba(0,0,0,.07)'; x.fillRect(i, 0, 1, s); x.fillStyle = 'rgba(255,255,255,.05)'; x.fillRect(0, i, s, 1); } speckle(x, s, 2500, [line, 'rgba(0,0,0,.2)'], 0.5, 1.4, 9); }, rep);
-  const shirtM = new THREE.MeshPhysicalMaterial({ map: clothTex('#2c7a58', '#4a9a78', [3, 3]), roughness: 0.86, sheen: 1, sheenColor: new THREE.Color(0x9fd8bc), sheenRoughness: 0.55, bumpMap: clothTex('#808080', '#999', [3, 3]), bumpScale: 0.5 });
+  const shirtM = new THREE.MeshPhysicalMaterial({ map: clothTex('#27664a', '#3f8a68', [3, 3]), roughness: 0.86, sheen: 1, sheenColor: new THREE.Color(0x8cc4a8), sheenRoughness: 0.55, bumpMap: clothTex('#808080', '#999', [3, 3]), bumpScale: 0.5 });
   const sarongTex = texCanvas(512, (x, s) => { x.fillStyle = '#7d1e22'; x.fillRect(0, 0, s, s); for (let i = 0; i < 8; i++) { const p = i * 64; x.fillStyle = 'rgba(206,168,84,.75)'; x.fillRect(p + 8, 0, 3, s); x.fillRect(0, p + 8, s, 3); x.fillStyle = 'rgba(34,12,14,.8)'; x.fillRect(p + 26, 0, 20, s); x.fillRect(0, p + 26, s, 20); x.fillStyle = 'rgba(232,218,184,.4)'; x.fillRect(p + 52, 0, 2, s); x.fillRect(0, p + 52, s, 2); } for (let i = 0; i < s; i += 4) { x.fillStyle = 'rgba(0,0,0,.08)'; x.fillRect(i, 0, 1, s); } }, [5, 3]);
   const sarongM = new THREE.MeshPhysicalMaterial({ map: sarongTex, roughness: 0.9, sheen: 0.6, sheenColor: new THREE.Color(0xd8a070), bumpMap: sarongTex, bumpScale: 0.6, side: THREE.DoubleSide });
   const sashM = new THREE.MeshPhysicalMaterial({ map: texCanvas(128, (x, s) => { x.fillStyle = '#7a4a14'; x.fillRect(0, 0, s, s); for (let i = 0; i < s; i += 8) { x.fillStyle = '#e6c25a'; x.fillRect(i, 0, 3, s); } x.fillStyle = 'rgba(255,230,140,.4)'; for (let i = 0; i < s; i += 16) x.fillRect(0, i, s, 2); }, [4, 1]), roughness: 0.55, metalness: 0.25 });
@@ -97,6 +97,16 @@ function makeMan() {
     const b = mesh(ellipsoid(0.028, 0.005, 0.009, 14, 8), new THREE.MeshStandardMaterial({ color: 0x242424, roughness: 0.9 }), M.head, s * 0.036, 0.142, surf(s * 0.036, 0.142) + 0.004); b.rotation.z = -s * 0.07; M.brows = M.brows || []; M.brows.push(b); }
   M.eyes = [];
   for (const s of [1, -1]) { const eg = makeEyeHuman(0.0125, ['#7a4a1e', '#2a1408']); eg.position.set(s * 0.034, 0.118, surf(s * 0.034, 0.118) - 0.0035); eg.rotation.y = s * 0.1; M.head.add(eg); M.eyes.push(eg); }
+  for (const s of [1, -1]) {                                                 // eyelid creases + lashes + cheeks
+    const ex = s * 0.034, ey = 0.118, ez = surf(ex, ey);
+    const lash = new THREE.Mesh(new THREE.TorusGeometry(0.0122, 0.0016, 6, 20, Math.PI), new THREE.MeshStandardMaterial({ color: 0x241410, roughness: 0.8 })); lash.position.set(ex, ey + 0.001, ez - 0.0006); lash.rotation.z = 0; lash.rotation.y = s * 0.1; M.head.add(lash);
+    const crease = new THREE.Mesh(new THREE.TorusGeometry(0.0145, 0.0012, 6, 20, Math.PI), new THREE.MeshStandardMaterial({ color: 0x7a4a30, roughness: 0.9 })); crease.position.set(ex, ey + 0.006, ez - 0.0012); crease.rotation.y = s * 0.1; M.head.add(crease);
+    const bag = new THREE.Mesh(ellipsoid(0.014, 0.0045, 0.006, 12, 8), new THREE.MeshStandardMaterial({ color: 0x8a5438, roughness: 0.9, transparent: true, opacity: 0.35 })); bag.position.set(ex, ey - 0.017, surf(ex, ey - 0.017) + 0.0008); M.head.add(bag);
+    const cheek = new THREE.Mesh(ellipsoid(0.02, 0.016, 0.006, 14, 10), new THREE.MeshStandardMaterial({ color: 0xc8603c, roughness: 0.9, transparent: true, opacity: 0.2, depthWrite: false })); cheek.position.set(s * 0.05, 0.07, surf(s * 0.05, 0.07) + 0.001); cheek.lookAt(cheek.position.x * 2, 0.07, 1); M.head.add(cheek); }
+  { const gi = skullGeo.clone().toNonIndexed(); const pos = gi.attributes.position, uvA = gi.attributes.uv, keep = []; for (let i = 0; i < pos.count; i += 3) { const cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3, cz = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3; if (cy < -0.045 && cz > -0.02) keep.push(i, i + 1, i + 2); }
+    const sg = new THREE.BufferGeometry(); const P = [], U = [], Nn = []; for (const i of keep) { P.push(pos.getX(i), pos.getY(i), pos.getZ(i)); U.push(uvA.getX(i), uvA.getY(i)); const n = gi.attributes.normal; Nn.push(n.getX(i), n.getY(i), n.getZ(i)); }
+    sg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); sg.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); sg.setAttribute('normal', new THREE.Float32BufferAttribute(Nn, 3)); sg.userData.kind = 'sphere'; sg.boundingBox = null;
+    const st = furMesh(sg, { base: 0x9a6a50, tip: 0x5a4438, furLen: 0.0016, density: 900, layers: 4 }); st.position.set(0, 0.115, 0); M.head.add(st); }
   // songkok
   { const g = lathePts([[0, 0.094], [0.01, 0.096], [0.072, 0.092], [0.082, 0.085], [0.085, 0.001]], 48); const sk = mesh(g, new THREE.MeshStandardMaterial({ color: 0x0c0c0c, roughness: 0.95 }), M.head, 0, 0.19, -0.008); sk.rotation.x = -0.16;
     const band = mesh(new THREE.TorusGeometry(0.094, 0.003, 8, 40), new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 0.7, roughness: 0.35 }), M.head, 0, 0.195, -0.008); band.rotation.x = Math.PI / 2 - 0.16; }
@@ -124,6 +134,7 @@ function makeMan() {
       const curl = a.curl === undefined ? 0.35 : a.curl;
       arm.fingers.forEach((f, k) => { const c = (a.point && k === 0) ? 0.05 : curl * (1.35 - k * 0.1); f.rotation.x = -c * 1.2; f.userData.f2.rotation.x = -c * 1.3; });
       arm.th.rotation.x = -0.2 - curl * 0.5; arm.th2.rotation.x = -0.2 - curl * 0.4; });
+    M.torso.scale.y = 1 + Math.sin((p.t || 0) * 2.2) * 0.006; M.torso.position.x = Math.sin((p.t || 0) * 0.8) * 0.01 * (amp < 0.1 ? 1 : 0);
     M.root.userData.pose = p;
   };
   M.pose({});
